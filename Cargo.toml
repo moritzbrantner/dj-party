@@ -12,6 +12,10 @@ crate-type = ["cdylib", "rlib"]
 
 [dependencies]
 wasm-bindgen = "0.2"
+audio-analysis-rhythm = { package = "moenarch-audio-analysis-rhythm", git = "https://github.com/moritzbrantner/audio-analysis.git", rev = "14ec2d8797ab914e5bf9fbe6dd7e1744e8d971a2" }
+
+[package.metadata.wasm-pack.profile.release]
+wasm-opt = false
 
 [profile.release]
 codegen-units = 1
@@ -19,9 +23,3 @@ lto = true
 opt-level = "s"
 panic = "abort"
 strip = true
-
-# wasm-pack 0.13.1 bundles a wasm-opt build that cannot validate the bulk-memory
-# and saturating conversion instructions emitted by Rust 1.95. The Rust release
-# build still uses size optimization + LTO; skip only this incompatible post-pass.
-[package.metadata.wasm-pack.profile.release]
-wasm-opt = false
