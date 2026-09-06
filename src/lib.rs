@@ -270,6 +270,10 @@ pub fn plan_beat_loop(
         return invalid_beat_loop(beat_count);
     }
 
+    if current_seconds > beats[beats.len() - 1] {
+        return invalid_beat_loop(beat_count);
+    }
+
     let last_start_index = beats.len() - beat_count - 1;
     let mut selected_index = None;
     let mut selected_distance = f64::INFINITY;
@@ -503,9 +507,10 @@ mod tests {
     }
 
     #[test]
-    fn beat_loop_rejects_invalid_or_unsupported_grids() {
+    fn beat_loop_rejects_invalid_unsupported_or_unanalyzed_positions() {
         assert!(!plan_beat_loop(&[0.0, 1.0, 0.5], 0.5, 1, 2.0).valid());
         assert!(!plan_beat_loop(&[0.0, 1.0, 2.0], 0.5, 3, 3.0).valid());
+        assert!(!plan_beat_loop(&[0.0, 1.0, 2.0], 8.0, 1, 10.0).valid());
     }
 
     #[test]
