@@ -18,7 +18,7 @@ jobs:
   validate:
     name: Validate
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 20
     steps:
       - name: Check out repository
         uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1
@@ -40,7 +40,10 @@ jobs:
         run: cargo test --all-features
 
       - name: Check browser JavaScript syntax
-        run: node --input-type=module --check < web/app.js
+        run: |
+          for file in web/app.js web/analysis-worker.js; do
+            node --input-type=module --check < "$file"
+          done
 
       - name: Install wasm-pack
         run: cargo install wasm-pack --version 0.13.1 --locked
@@ -82,7 +85,10 @@ jobs:
               assert target.is_file() and target.stat().st_size > 0, f"missing local asset: {raw}"
 
           app = (root / "app.js").read_text()
+          worker = (root / "analysis-worker.js").read_text()
           assert './pkg/dj_party.js' in app, "browser adapter does not reference generated WASM package"
+          assert './pkg/dj_party.js' in worker, "analysis worker does not reference generated WASM package"
+          assert 'analysis-worker.js' in app, "browser adapter does not start the analysis worker"
           assert (root / "pkg" / "dj_party.js").is_file(), "missing generated WASM JavaScript"
           assert (root / "pkg" / "dj_party_bg.wasm").is_file(), "missing generated WASM binary"
           PY
@@ -92,7 +98,7 @@ jobs:
     if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
     needs: validate
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 20
     permissions:
       contents: read
       pages: write
