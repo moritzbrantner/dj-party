@@ -111,13 +111,139 @@
   color: var(--accent-mix);
 }
 
+.timing-panel {
+  display: grid;
+  gap: 12px;
+  margin-top: 10px;
+  border: 1px solid #2d2d36;
+  border-radius: 14px;
+  background: #101015;
+  padding: 13px;
+}
+
+.tempo-control,
+.loop-control {
+  min-width: 0;
+}
+
+.timing-heading,
+.timing-actions,
+.tempo-scale {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.timing-heading {
+  color: #d5d5db;
+  font-size: 0.72rem;
+  font-weight: 700;
+}
+
+.timing-heading output,
+.effective-bpm,
+.timing-status,
+.tempo-scale {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+
+.timing-heading output {
+  color: var(--muted);
+  font-size: 0.69rem;
+  font-weight: 550;
+}
+
+.tempo-slider {
+  width: 100%;
+  margin: 7px 0 0;
+  accent-color: #e7e7ea;
+}
+
+.deck-a .tempo-slider {
+  accent-color: var(--accent-a);
+}
+
+.deck-b .tempo-slider {
+  accent-color: var(--accent-b);
+}
+
+.tempo-scale {
+  margin-top: 2px;
+  color: #686873;
+  font-size: 0.58rem;
+}
+
+.timing-actions {
+  flex-wrap: wrap;
+}
+
+.key-lock-control {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: #c9c9d0;
+  cursor: pointer;
+  font-size: 0.7rem;
+  font-weight: 650;
+}
+
+.key-lock-control input {
+  margin: 0;
+  accent-color: var(--accent-mix);
+}
+
+.effective-bpm {
+  color: #d8d8dd;
+  font-size: 0.72rem;
+}
+
+.sync-button:not(:disabled) {
+  border-color: rgb(199 255 94 / 32%);
+  color: var(--accent-mix);
+}
+
+.timing-status {
+  min-height: 1.3em;
+  color: #858590;
+  font-size: 0.62rem;
+  line-height: 1.35;
+}
+
+.loop-control {
+  border-top: 1px solid #27272f;
+  padding-top: 11px;
+}
+
+.loop-buttons {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.loop-buttons .mini-button {
+  min-width: 0;
+  padding: 0 6px;
+}
+
+.loop-buttons .mini-button.is-active {
+  border-color: rgb(199 255 94 / 55%);
+  background: rgb(199 255 94 / 10%);
+  color: var(--accent-mix);
+}
+
+.loop-off-button:not(:disabled) {
+  color: #bdbdc5;
+}
+
 .deck .platter-wrap {
-  min-height: 174px;
-  padding: 14px 0 18px;
+  min-height: 142px;
+  padding: 12px 0 16px;
 }
 
 .deck .platter {
-  width: min(190px, 58%);
+  width: min(168px, 52%);
 }
 
 @media (max-width: 640px) {
@@ -134,5 +260,13 @@
   .cue-row {
     align-items: flex-start;
     flex-direction: column;
+  }
+
+  .timing-actions {
+    align-items: flex-start;
+  }
+
+  .effective-bpm {
+    margin-left: auto;
   }
 }

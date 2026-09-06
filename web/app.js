@@ -1,4 +1,12 @@
-import init, { CuePoint, Mixer } from "./pkg/dj_party.js";
+import init, {
+  CuePoint,
+  Mixer,
+  effective_bpm,
+  plan_beat_loop,
+  plan_sync,
+  playback_rate_for_tempo,
+  tempo_percent_for_rate,
+} from "./pkg/dj_party.js";
 
 const state = {
   audioContext: null,
@@ -24,6 +32,9 @@ class Deck {
     this.waveformData = null;
     this.beats = new Float64Array();
     this.downbeats = new Float64Array();
+    this.baseBpm = null;
+    this.activeLoop = null;
+    this.animationFrame = null;
 
     this.fileInput = document.querySelector(`#deck-${id}-file`);
     this.dropZone = document.querySelector(`#deck-${id}-drop-zone`);
@@ -43,11 +54,24 @@ class Deck {
     this.waveform = document.querySelector(`#deck-${id}-waveform`);
     this.bpm = document.querySelector(`#deck-${id}-bpm`);
     this.analysisStatus = document.querySelector(`#deck-${id}-analysis-status`);
+    this.tempo = document.querySelector(`#deck-${id}-tempo`);
+    this.tempoValue = document.querySelector(`#deck-${id}-tempo-value`);
+    this.effectiveBpm = document.querySelector(`#deck-${id}-effective-bpm`);
+    this.keyLock = document.querySelector(`#deck-${id}-key-lock`);
+    this.syncButton = document.querySelector(`#deck-${id}-sync`);
+    this.timingStatus = document.querySelector(`#deck-${id}-timing-status`);
+    this.loopControls = document.querySelector(`#deck-${id}-loop-controls`);
+    this.loopButtons = [...this.loopControls.querySelectorAll("[data-loop-beats]")];
+    this.loopOffButton = document.querySelector(`#deck-${id}-loop-off`);
+    this.loopStatus = document.querySelector(`#deck-${id}-loop-status`);
 
+    setPitchPreservation(this.audio, true);
     this.resizeObserver = new ResizeObserver(() => this.drawWaveform());
     this.resizeObserver.observe(this.waveform);
     this.bindEvents();
     this.drawWaveform();
+    this.updateTimingReadout();
+    this.updateLoopAvailability();
   }
 
   bindEvents() {
@@ -111,6 +135,7 @@ class Deck {
       }
 
       this.audio.currentTime = Math.min(this.cue.seconds(), this.audio.duration || this.cue.seconds());
+      this.enforceLoop();
       this.updateProgress();
     });
 
@@ -120,6 +145,7 @@ class Deck {
       }
 
       this.audio.currentTime = (Number(this.seek.value) / 1000) * this.audio.duration;
+      this.enforceLoop();
       this.updateProgress();
     });
 
@@ -131,6 +157,7 @@ class Deck {
       const bounds = this.waveform.getBoundingClientRect();
       const fraction = Math.min(1, Math.max(0, (event.clientX - bounds.left) / bounds.width));
       this.audio.currentTime = fraction * this.audio.duration;
+      this.enforceLoop();
       this.updateProgress();
     });
 
@@ -140,6 +167,28 @@ class Deck {
       this.levelValue.textContent = `${this.level.value}%`;
       applyMixerGains();
     });
+
+    this.tempo.addEventListener("input", () => {
+      const rate = playback_rate_for_tempo(Number(this.tempo.value));
+      this.setPlaybackRate(rate);
+      this.timingStatus.textContent = "Manual tempo";
+      refreshSyncButtons();
+    });
+
+    this.keyLock.addEventListener("change", () => {
+      setPitchPreservation(this.audio, this.keyLock.checked);
+      this.timingStatus.textContent = this.keyLock.checked
+        ? "Key locked while tempo changes"
+        : "Pitch follows tempo";
+    });
+
+    this.syncButton.addEventListener("click", () => this.syncToOtherDeck());
+
+    for (const button of this.loopButtons) {
+      button.addEventListener("click", () => this.activateBeatLoop(Number(button.dataset.loopBeats)));
+    }
+
+    this.loopOffButton.addEventListener("click", () => this.disableLoop());
 
     this.audio.addEventListener("loadedmetadata", () => {
       this.duration.textContent = formatTime(this.audio.duration);
@@ -160,18 +209,21 @@ class Deck {
       this.playButton.textContent = "Ⅱ Pause";
       this.deckState.textContent = "Playing";
       this.platter.classList.add("is-playing");
+      this.startPlaybackAnimation();
     });
 
     this.audio.addEventListener("pause", () => {
       this.playButton.textContent = "▶ Play";
       this.deckState.textContent = this.audio.ended ? "Ended" : "Paused";
       this.platter.classList.remove("is-playing");
+      this.stopPlaybackAnimation();
     });
 
     this.audio.addEventListener("ended", () => {
       this.playButton.textContent = "▶ Play";
       this.deckState.textContent = "Ended";
       this.platter.classList.remove("is-playing");
+      this.stopPlaybackAnimation();
       this.updateProgress();
     });
 
@@ -192,11 +244,14 @@ class Deck {
 
     this.audio.pause();
     this.audio.currentTime = 0;
+    this.setPlaybackRate(1.0);
     this.analysisRequestId = ++state.nextAnalysisRequestId;
     this.waveformData = null;
     this.beats = new Float64Array();
     this.downbeats = new Float64Array();
+    this.baseBpm = null;
     this.cue.clear();
+    this.disableLoop();
 
     if (this.objectUrl) {
       URL.revokeObjectURL(this.objectUrl);
@@ -218,8 +273,12 @@ class Deck {
     this.cueTime.textContent = "—";
     this.bpm.textContent = "—";
     this.analysisStatus.textContent = "Decoding track…";
+    this.timingStatus.textContent = "Waiting for BPM analysis";
     this.deckState.textContent = "Loading";
     this.platter.classList.remove("is-playing");
+    this.updateTimingReadout();
+    this.updateLoopAvailability();
+    refreshSyncButtons();
     this.drawWaveform();
 
     void this.analyzeFile(file, this.analysisRequestId);
@@ -263,17 +322,23 @@ class Deck {
     this.waveformData = message.extrema;
     this.beats = message.beats;
     this.downbeats = message.downbeats;
-    this.bpm.textContent = Number.isFinite(message.bpm) ? message.bpm.toFixed(1) : "—";
+    this.baseBpm = Number.isFinite(message.bpm) ? message.bpm : null;
+    this.bpm.textContent = this.baseBpm === null ? "—" : this.baseBpm.toFixed(1);
 
-    if (Number.isFinite(message.bpm)) {
+    if (this.baseBpm !== null) {
       const confidence = Math.round(Math.max(0, Math.min(1, message.confidence)) * 100);
       this.analysisStatus.textContent = message.analysisLimited
         ? `Rhythm ${confidence}% · first 15 min analyzed`
         : `Rhythm confidence ${confidence}%`;
+      this.timingStatus.textContent = "Tempo ready";
     } else {
       this.analysisStatus.textContent = "No stable tempo detected";
+      this.timingStatus.textContent = "Sync unavailable without BPM";
     }
 
+    this.updateTimingReadout();
+    this.updateLoopAvailability();
+    refreshSyncButtons();
     this.drawWaveform();
   }
 
@@ -283,7 +348,12 @@ class Deck {
     }
 
     console.error(`Rhythm analysis failed for deck ${this.id.toUpperCase()}: ${message.message}`);
+    this.baseBpm = null;
     this.analysisStatus.textContent = "Analysis unavailable";
+    this.timingStatus.textContent = "Timing controls need analysis";
+    this.updateTimingReadout();
+    this.updateLoopAvailability();
+    refreshSyncButtons();
   }
 
   async play() {
@@ -317,6 +387,140 @@ class Deck {
 
     const gain = this.mixerGainGetter();
     this.gainNode.gain.setTargetAtTime(gain, state.audioContext.currentTime, 0.012);
+  }
+
+  setPlaybackRate(rate) {
+    const tempoPercent = tempo_percent_for_rate(rate);
+    const normalizedRate = playback_rate_for_tempo(tempoPercent);
+    this.audio.playbackRate = normalizedRate;
+    this.tempo.value = tempoPercent.toFixed(1);
+    this.tempoValue.textContent = formatTempoPercent(tempoPercent);
+    this.updateTimingReadout();
+  }
+
+  updateTimingReadout() {
+    const bpm = this.baseBpm === null ? Number.NaN : effective_bpm(this.baseBpm, this.audio.playbackRate);
+    this.effectiveBpm.textContent = Number.isFinite(bpm) ? `${bpm.toFixed(1)} BPM` : "— BPM";
+  }
+
+  syncToOtherDeck() {
+    const otherDeck = state.decks.get(this.id === "a" ? "b" : "a");
+    if (this.baseBpm === null || otherDeck?.baseBpm === null || !otherDeck) {
+      return;
+    }
+
+    const plan = plan_sync(this.baseBpm, otherDeck.baseBpm, otherDeck.audio.playbackRate);
+    try {
+      if (!plan.valid()) {
+        this.timingStatus.textContent = "Sync unavailable";
+        return;
+      }
+
+      this.setPlaybackRate(plan.playback_rate());
+      this.timingStatus.textContent = plan.limited()
+        ? `Closest match · target ${plan.target_bpm().toFixed(1)} BPM`
+        : `Synced to Deck ${otherDeck.id.toUpperCase()} · ${plan.target_bpm().toFixed(1)} BPM`;
+    } finally {
+      plan.free();
+    }
+  }
+
+  activateBeatLoop(beatCount) {
+    if (!Number.isFinite(this.audio.duration) || this.audio.duration <= 0) {
+      return;
+    }
+
+    const plan = plan_beat_loop(this.beats, this.audio.currentTime, beatCount, this.audio.duration);
+    try {
+      if (!plan.valid()) {
+        this.loopStatus.textContent = "No complete analyzed beat window here";
+        return;
+      }
+
+      this.activeLoop = {
+        start: plan.start_seconds(),
+        end: plan.end_seconds(),
+        beatCount: plan.beat_count(),
+      };
+      this.audio.currentTime = this.activeLoop.start;
+      this.loopOffButton.disabled = false;
+      this.loopStatus.textContent = `${beatCount}-beat loop · ${formatTimePrecise(this.activeLoop.start)}–${formatTimePrecise(this.activeLoop.end)}`;
+      for (const button of this.loopButtons) {
+        button.classList.toggle("is-active", Number(button.dataset.loopBeats) === beatCount);
+      }
+      this.updateProgress();
+    } finally {
+      plan.free();
+    }
+  }
+
+  disableLoop() {
+    this.activeLoop = null;
+    this.loopOffButton.disabled = true;
+    this.loopStatus.textContent = "Loop off";
+    for (const button of this.loopButtons) {
+      button.classList.remove("is-active");
+    }
+    this.drawWaveform();
+  }
+
+  updateLoopAvailability() {
+    const available = this.beats.length >= 2;
+    for (const button of this.loopButtons) {
+      const beatCount = Number(button.dataset.loopBeats);
+      button.disabled = !available || this.beats.length <= beatCount;
+    }
+    if (!available && !this.activeLoop) {
+      this.loopStatus.textContent = "Beat grid required";
+    } else if (!this.activeLoop) {
+      this.loopStatus.textContent = "Loop off";
+    }
+  }
+
+  enforceLoop() {
+    if (!this.activeLoop) {
+      return;
+    }
+
+    const { start, end } = this.activeLoop;
+    const span = end - start;
+    if (!Number.isFinite(span) || span <= 0) {
+      this.disableLoop();
+      return;
+    }
+
+    const current = this.audio.currentTime;
+    if (current < start) {
+      this.audio.currentTime = start;
+    } else if (current >= end) {
+      this.audio.currentTime = start + ((current - end) % span);
+    }
+  }
+
+  startPlaybackAnimation() {
+    if (this.animationFrame !== null) {
+      return;
+    }
+
+    const frame = () => {
+      this.animationFrame = null;
+      if (this.audio.paused) {
+        return;
+      }
+
+      this.enforceLoop();
+      this.updateProgress();
+      this.animationFrame = requestAnimationFrame(frame);
+    };
+
+    this.animationFrame = requestAnimationFrame(frame);
+  }
+
+  stopPlaybackAnimation() {
+    if (this.animationFrame !== null) {
+      cancelAnimationFrame(this.animationFrame);
+      this.animationFrame = null;
+    }
   }
 
   updateProgress() {
@@ -363,6 +567,24 @@ class Deck {
     context.stroke();
 
     const duration = Number.isFinite(this.audio.duration) && this.audio.duration > 0 ? this.audio.duration : 0;
+    if (duration > 0 && this.activeLoop) {
+      const startX = (this.activeLoop.start / duration) * width;
+      const endX = (this.activeLoop.end / duration) * width;
+      context.fillStyle = mixAccent;
+      context.globalAlpha = 0.1;
+      context.fillRect(startX, 0, Math.max(1, endX - startX), height);
+      context.globalAlpha = 0.75;
+      context.strokeStyle = mixAccent;
+      context.lineWidth = 1.5;
+      for (const x of [startX, endX]) {
+        context.beginPath();
+        context.moveTo(x, 0);
+        context.lineTo(x, height);
+        context.stroke();
+      }
+      context.globalAlpha = 1;
+    }
+
     if (duration > 0) {
       context.strokeStyle = accent;
       context.globalAlpha = 0.22;
@@ -426,6 +648,7 @@ class Deck {
   }
 
   destroy() {
+    this.stopPlaybackAnimation();
     this.resizeObserver.disconnect();
     this.cue.free();
     if (this.objectUrl) {
@@ -448,6 +671,33 @@ function formatTime(seconds) {
   const minutes = Math.floor(wholeSeconds / 60);
   const remainder = String(wholeSeconds % 60).padStart(2, "0");
   return `${minutes}:${remainder}`;
+}
+
+function formatTimePrecise(seconds) {
+  if (!Number.isFinite(seconds) || seconds < 0) {
+    return "0:00.0";
+  }
+
+  const minutes = Math.floor(seconds / 60);
+  const remainder = (seconds - minutes * 60).toFixed(1).padStart(4, "0");
+  return `${minutes}:${remainder}`;
+}
+
+function formatTempoPercent(value) {
+  const normalized = Math.abs(value) < 0.05 ? 0 : value;
+  return `${normalized > 0 ? "+" : ""}${normalized.toFixed(1)}%`;
+}
+
+function setPitchPreservation(audio, enabled) {
+  if ("preservesPitch" in audio) {
+    audio.preservesPitch = enabled;
+  }
+  if ("mozPreservesPitch" in audio) {
+    audio.mozPreservesPitch = enabled;
+  }
+  if ("webkitPreservesPitch" in audio) {
+    audio.webkitPreservesPitch = enabled;
+  }
 }
 
 function getDecodeContext() {
@@ -495,6 +745,18 @@ function applyMixerGains() {
   document.querySelector("#gain-b").textContent = state.mixer.deck_b_gain().toFixed(3);
 }
 
+function refreshSyncButtons() {
+  const deckA = state.decks.get("a");
+  const deckB = state.decks.get("b");
+  if (!deckA || !deckB) {
+    return;
+  }
+
+  const ready = deckA.baseBpm !== null && deckB.baseBpm !== null;
+  deckA.syncButton.disabled = !ready;
+  deckB.syncButton.disabled = !ready;
+}
+
 function bindCrossfader() {
   const crossfader = document.querySelector("#crossfader");
   const output = document.querySelector("#crossfader-value");
@@ -527,6 +789,7 @@ function bindAnalysisWorker() {
     console.error("Track analysis worker failed", error);
     for (const deck of state.decks.values()) {
       deck.analysisStatus.textContent = "Analysis worker unavailable";
+      deck.timingStatus.textContent = "Timing controls need analysis";
     }
   });
 }
@@ -562,6 +825,7 @@ async function start() {
 
   bindAnalysisWorker();
   bindCrossfader();
+  refreshSyncButtons();
   applyMixerGains();
 }
 

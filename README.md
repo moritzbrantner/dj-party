@@ -1,28 +1,30 @@
 # DJ Party
 
-DJ Party is a browser-first DJ mixing experiment with a Rust core. The long-term goal is collaborative mixing, while the first milestone is deliberately small enough to run entirely on GitHub Pages.
+DJ Party is a browser-first DJ mixing experiment with a Rust core. The long-term goal is collaborative mixing, while the current local workflow runs entirely on GitHub Pages.
 
-## Browser MVP
+## Current browser workflow
 
-The MVP can:
+DJ Party can:
 
-- load a local audio file into either of two decks;
+- load local audio into either of two decks;
 - drag and drop MP3 and other browser-supported audio files;
-- play, pause, restart, and seek each deck independently;
-- control each deck level;
-- mix both decks with an equal-power crossfader;
-- show the live gain values calculated by the Rust/WASM mixer core.
+- play, pause, restart, seek, and set/jump to cue points;
+- render full-track waveforms with analyzed beats and downbeats;
+- estimate BPM through the pinned `audio-analysis` rhythm engine;
+- control each deck level and mix both decks with an equal-power crossfader;
+- adjust tempo by ±16% with optional browser key lock;
+- create quantized 1/2/4/8-beat loops from the analyzed beat grid;
+- sync one deck's effective BPM to the other within the supported tempo range.
 
-Selected tracks stay on the device. The MVP does not upload audio anywhere.
+Selected tracks, decoded PCM, waveform/beat data, cue points, loops, and timing state stay on the device. DJ Party does not upload audio anywhere.
 
 ## Architecture
 
-Rust/WASM is authoritative for deterministic mixer state and gain calculations. The browser layer is intentionally thin and owns only browser-specific capabilities such as local file selection, object URLs, `AudioContext`, `MediaElementAudioSourceNode`, gain nodes, and DOM interaction.
+Rust/WASM is authoritative for deterministic mixer state, gain calculations, waveform reduction, cue semantics, tempo/rate mapping, sync-rate planning, beat-loop boundaries, and rhythm analysis. The browser owns only browser-specific capabilities such as local file decoding, object URLs, media/Web Audio playback, `preservesPitch` key lock, workers, canvas rendering, and DOM interaction.
 
-This keeps a clean path toward later reuse:
+Rhythm analysis reuses `audio-analysis` at an exact pinned Git revision instead of duplicating BPM, beat-tracking, or Fourier code. Collaborative lobby/signaling will integrate through `multiplayer-setup-service` rather than becoming part of the mixer core.
 
-- suitable BPM/rhythm/Fourier analysis should come from `audio-analysis` rather than being reimplemented here;
-- collaborative lobby/signaling should integrate through `multiplayer-setup-service` rather than becoming part of the mixer core.
+The current Sync action synchronizes **tempo**, not beat phase. Phase-aware synchronization is deliberately deferred until it can be represented and verified as its own deterministic contract.
 
 ## Build and validate
 
@@ -40,10 +42,10 @@ The generated static site is written to `_site/` and can be served by any local 
 
 ## Roadmap
 
-1. Browser MVP on GitHub Pages
-2. Real waveform display and cue points
-3. Tempo/BPM and beat-grid analysis through reusable Rust audio analysis
-4. Pitch/tempo controls and beat-aligned transport
-5. Headphone cue/master routing where browser APIs allow it
+1. Browser two-deck MVP on GitHub Pages — done
+2. Waveforms, cue points, BPM, beat/downbeat analysis — done
+3. Tempo/key-lock controls, beat loops, and tempo Sync — current slice
+4. Beat-phase alignment and stronger transport/cue workflows
+5. EQ/filtering and headphone cue/master routing where browser APIs allow it
 6. Multiplayer sessions through `multiplayer-setup-service`
-7. Shared-session authority, synchronization, optional asset transfer, and collaborative mixing
+7. Shared-session authority, synchronized collaborative control, and optional user-approved asset transfer
