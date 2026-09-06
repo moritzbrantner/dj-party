@@ -19,3 +19,9 @@ lto = true
 opt-level = "s"
 panic = "abort"
 strip = true
+
+# wasm-pack 0.13.1 bundles a wasm-opt build that cannot validate the bulk-memory
+# and saturating conversion instructions emitted by Rust 1.95. The Rust release
+# build still uses size optimization + LTO; skip only this incompatible post-pass.
+[package.metadata.wasm-pack.profile.release]
+wasm-opt = false
