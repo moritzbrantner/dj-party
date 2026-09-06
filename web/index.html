@@ -9,6 +9,7 @@
     />
     <title>DJ Party</title>
     <link rel="stylesheet" href="./styles.css" />
+    <link rel="stylesheet" href="./analysis.css" />
   </head>
   <body>
     <main class="app-shell">
@@ -18,7 +19,7 @@
             <span class="brand-mark" aria-hidden="true">◉</span>
             <span>DJ Party</span>
           </a>
-          <p class="tagline">Two decks. Local tracks. Rust in the mix.</p>
+          <p class="tagline">Two decks. Local tracks. Rust analysis in the mix.</p>
         </div>
         <div class="session-status" aria-label="Session status">
           <span class="status-dot" aria-hidden="true"></span>
@@ -61,6 +62,27 @@
               aria-label="Deck A track position"
               disabled
             />
+          </div>
+
+          <div class="analysis-line" aria-live="polite">
+            <span class="tempo-readout"><strong id="deck-a-bpm">—</strong> BPM</span>
+            <span id="deck-a-analysis-status">Load a track to analyze</span>
+          </div>
+          <div class="waveform-wrap">
+            <canvas
+              id="deck-a-waveform"
+              class="waveform"
+              width="720"
+              height="124"
+              aria-label="Deck A waveform, beat grid, cue point, and playhead"
+            ></canvas>
+          </div>
+          <div class="cue-row">
+            <span class="cue-readout">Cue <output id="deck-a-cue-time">—</output></span>
+            <div class="cue-actions">
+              <button id="deck-a-set-cue" class="mini-button" type="button" disabled>Set cue</button>
+              <button id="deck-a-cue" class="mini-button cue-button" type="button" disabled>Cue</button>
+            </div>
           </div>
 
           <div class="platter-wrap" aria-hidden="true">
@@ -121,6 +143,7 @@
 
           <p class="engine-note">
             Equal-power gain values are calculated by the Rust/WASM mixer core and applied through Web Audio.
+            Rhythm analysis reuses the pinned audio-analysis Rust engine in a browser worker.
           </p>
         </section>
 
@@ -160,6 +183,27 @@
             />
           </div>
 
+          <div class="analysis-line" aria-live="polite">
+            <span class="tempo-readout"><strong id="deck-b-bpm">—</strong> BPM</span>
+            <span id="deck-b-analysis-status">Load a track to analyze</span>
+          </div>
+          <div class="waveform-wrap">
+            <canvas
+              id="deck-b-waveform"
+              class="waveform"
+              width="720"
+              height="124"
+              aria-label="Deck B waveform, beat grid, cue point, and playhead"
+            ></canvas>
+          </div>
+          <div class="cue-row">
+            <span class="cue-readout">Cue <output id="deck-b-cue-time">—</output></span>
+            <div class="cue-actions">
+              <button id="deck-b-set-cue" class="mini-button" type="button" disabled>Set cue</button>
+              <button id="deck-b-cue" class="mini-button cue-button" type="button" disabled>Cue</button>
+            </div>
+          </div>
+
           <div class="platter-wrap" aria-hidden="true">
             <div id="deck-b-platter" class="platter">
               <div class="platter-ring"></div>
@@ -185,8 +229,8 @@
       </section>
 
       <footer class="footer">
-        <p>Tracks stay on this device. Nothing is uploaded by this MVP.</p>
-        <p>Collaborative sessions via multiplayer-setup-service are a later milestone.</p>
+        <p>Tracks, decoded PCM, waveform data, and cue points stay on this device.</p>
+        <p>Collaborative sessions via multiplayer-setup-service remain a later milestone.</p>
       </footer>
     </main>
 

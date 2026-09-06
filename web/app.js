@@ -1,9 +1,12 @@
-import init, { Mixer } from "./pkg/dj_party.js";
+import init, { CuePoint, Mixer } from "./pkg/dj_party.js";
 
 const state = {
   audioContext: null,
+  decodeContext: null,
   mixer: null,
   decks: new Map(),
+  analysisWorker: null,
+  nextAnalysisRequestId: 0,
 };
 
 class Deck {
@@ -13,9 +16,14 @@ class Deck {
     this.mixerGainGetter = mixerGainGetter;
     this.audio = new Audio();
     this.audio.preload = "metadata";
+    this.cue = new CuePoint();
     this.sourceNode = null;
     this.gainNode = null;
     this.objectUrl = null;
+    this.analysisRequestId = 0;
+    this.waveformData = null;
+    this.beats = new Float64Array();
+    this.downbeats = new Float64Array();
 
     this.fileInput = document.querySelector(`#deck-${id}-file`);
     this.dropZone = document.querySelector(`#deck-${id}-drop-zone`);
@@ -25,12 +33,21 @@ class Deck {
     this.seek = document.querySelector(`#deck-${id}-seek`);
     this.playButton = document.querySelector(`#deck-${id}-play`);
     this.restartButton = document.querySelector(`#deck-${id}-restart`);
+    this.setCueButton = document.querySelector(`#deck-${id}-set-cue`);
+    this.cueButton = document.querySelector(`#deck-${id}-cue`);
+    this.cueTime = document.querySelector(`#deck-${id}-cue-time`);
     this.level = document.querySelector(`#deck-${id}-level`);
     this.levelValue = document.querySelector(`#deck-${id}-level-value`);
     this.deckState = document.querySelector(`#deck-${id}-state`);
     this.platter = document.querySelector(`#deck-${id}-platter`);
+    this.waveform = document.querySelector(`#deck-${id}-waveform`);
+    this.bpm = document.querySelector(`#deck-${id}-bpm`);
+    this.analysisStatus = document.querySelector(`#deck-${id}-analysis-status`);
 
+    this.resizeObserver = new ResizeObserver(() => this.drawWaveform());
+    this.resizeObserver.observe(this.waveform);
     this.bindEvents();
+    this.drawWaveform();
   }
 
   bindEvents() {
@@ -75,12 +92,45 @@ class Deck {
       this.updateProgress();
     });
 
+    this.setCueButton.addEventListener("click", () => {
+      if (!Number.isFinite(this.audio.duration) || this.audio.duration <= 0) {
+        return;
+      }
+
+      const cueSeconds = Math.min(this.audio.currentTime, this.audio.duration);
+      if (this.cue.set_seconds(cueSeconds)) {
+        this.cueButton.disabled = false;
+        this.cueTime.textContent = formatTime(cueSeconds);
+        this.drawWaveform();
+      }
+    });
+
+    this.cueButton.addEventListener("click", () => {
+      if (!this.cue.has_cue()) {
+        return;
+      }
+
+      this.audio.currentTime = Math.min(this.cue.seconds(), this.audio.duration || this.cue.seconds());
+      this.updateProgress();
+    });
+
     this.seek.addEventListener("input", () => {
       if (!Number.isFinite(this.audio.duration) || this.audio.duration <= 0) {
         return;
       }
 
       this.audio.currentTime = (Number(this.seek.value) / 1000) * this.audio.duration;
+      this.updateProgress();
+    });
+
+    this.waveform.addEventListener("pointerdown", (event) => {
+      if (!Number.isFinite(this.audio.duration) || this.audio.duration <= 0) {
+        return;
+      }
+
+      const bounds = this.waveform.getBoundingClientRect();
+      const fraction = Math.min(1, Math.max(0, (event.clientX - bounds.left) / bounds.width));
+      this.audio.currentTime = fraction * this.audio.duration;
       this.updateProgress();
     });
 
@@ -94,11 +144,14 @@ class Deck {
     this.audio.addEventListener("loadedmetadata", () => {
       this.duration.textContent = formatTime(this.audio.duration);
       this.seek.disabled = false;
+      this.setCueButton.disabled = false;
       this.deckState.textContent = "Ready";
+      this.drawWaveform();
     });
 
     this.audio.addEventListener("durationchange", () => {
       this.duration.textContent = formatTime(this.audio.duration);
+      this.drawWaveform();
     });
 
     this.audio.addEventListener("timeupdate", () => this.updateProgress());
@@ -126,6 +179,7 @@ class Deck {
       this.deckState.textContent = "Audio error";
       this.playButton.disabled = true;
       this.restartButton.disabled = true;
+      this.setCueButton.disabled = true;
     });
   }
 
@@ -138,6 +192,11 @@ class Deck {
 
     this.audio.pause();
     this.audio.currentTime = 0;
+    this.analysisRequestId = ++state.nextAnalysisRequestId;
+    this.waveformData = null;
+    this.beats = new Float64Array();
+    this.downbeats = new Float64Array();
+    this.cue.clear();
 
     if (this.objectUrl) {
       URL.revokeObjectURL(this.objectUrl);
@@ -154,8 +213,77 @@ class Deck {
     this.seek.disabled = true;
     this.playButton.disabled = false;
     this.restartButton.disabled = false;
+    this.setCueButton.disabled = true;
+    this.cueButton.disabled = true;
+    this.cueTime.textContent = "—";
+    this.bpm.textContent = "—";
+    this.analysisStatus.textContent = "Decoding track…";
     this.deckState.textContent = "Loading";
     this.platter.classList.remove("is-playing");
+    this.drawWaveform();
+
+    void this.analyzeFile(file, this.analysisRequestId);
+  }
+
+  async analyzeFile(file, requestId) {
+    try {
+      const context = getDecodeContext();
+      const encoded = await file.arrayBuffer();
+      const buffer = await context.decodeAudioData(encoded);
+      if (requestId !== this.analysisRequestId) {
+        return;
+      }
+
+      const mono = mixToMono(buffer);
+      this.analysisStatus.textContent = "Analyzing rhythm…";
+      state.analysisWorker.postMessage(
+        {
+          type: "analyze",
+          deckId: this.id,
+          requestId,
+          samples: mono,
+          sampleRate: buffer.sampleRate,
+        },
+        [mono.buffer],
+      );
+    } catch (error) {
+      if (requestId !== this.analysisRequestId) {
+        return;
+      }
+      console.error(`Could not analyze deck ${this.id.toUpperCase()}`, error);
+      this.analysisStatus.textContent = "Analysis unavailable";
+    }
+  }
+
+  applyAnalysis(message) {
+    if (message.requestId !== this.analysisRequestId) {
+      return;
+    }
+
+    this.waveformData = message.extrema;
+    this.beats = message.beats;
+    this.downbeats = message.downbeats;
+    this.bpm.textContent = Number.isFinite(message.bpm) ? message.bpm.toFixed(1) : "—";
+
+    if (Number.isFinite(message.bpm)) {
+      const confidence = Math.round(Math.max(0, Math.min(1, message.confidence)) * 100);
+      this.analysisStatus.textContent = message.analysisLimited
+        ? `Rhythm ${confidence}% · first 15 min analyzed`
+        : `Rhythm confidence ${confidence}%`;
+    } else {
+      this.analysisStatus.textContent = "No stable tempo detected";
+    }
+
+    this.drawWaveform();
+  }
+
+  applyAnalysisError(message) {
+    if (message.requestId !== this.analysisRequestId) {
+      return;
+    }
+
+    console.error(`Rhythm analysis failed for deck ${this.id.toUpperCase()}: ${message.message}`);
+    this.analysisStatus.textContent = "Analysis unavailable";
   }
 
   async play() {
@@ -196,14 +324,110 @@ class Deck {
 
     if (!Number.isFinite(this.audio.duration) || this.audio.duration <= 0) {
       this.seek.value = "0";
+      this.drawWaveform();
       return;
     }
 
     const progress = Math.round((this.audio.currentTime / this.audio.duration) * 1000);
     this.seek.value = String(progress);
+    this.drawWaveform();
+  }
+
+  drawWaveform() {
+    const bounds = this.waveform.getBoundingClientRect();
+    const width = Math.max(1, bounds.width);
+    const height = Math.max(1, bounds.height);
+    const pixelRatio = window.devicePixelRatio || 1;
+    const targetWidth = Math.max(1, Math.round(width * pixelRatio));
+    const targetHeight = Math.max(1, Math.round(height * pixelRatio));
+
+    if (this.waveform.width !== targetWidth || this.waveform.height !== targetHeight) {
+      this.waveform.width = targetWidth;
+      this.waveform.height = targetHeight;
+    }
+
+    const context = this.waveform.getContext("2d");
+    context.setTransform(pixelRatio, 0, 0, pixelRatio, 0, 0);
+    context.clearRect(0, 0, width, height);
+
+    const rootStyle = getComputedStyle(document.documentElement);
+    const accent = rootStyle.getPropertyValue(this.id === "a" ? "--accent-a" : "--accent-b").trim();
+    const mixAccent = rootStyle.getPropertyValue("--accent-mix").trim();
+    const center = height / 2;
+
+    context.strokeStyle = "rgba(255, 255, 255, 0.10)";
+    context.lineWidth = 1;
+    context.beginPath();
+    context.moveTo(0, center);
+    context.lineTo(width, center);
+    context.stroke();
+
+    const duration = Number.isFinite(this.audio.duration) && this.audio.duration > 0 ? this.audio.duration : 0;
+    if (duration > 0) {
+      context.strokeStyle = accent;
+      context.globalAlpha = 0.22;
+      context.lineWidth = 1;
+      for (const beat of this.beats) {
+        const x = (beat / duration) * width;
+        context.beginPath();
+        context.moveTo(x, 0);
+        context.lineTo(x, height);
+        context.stroke();
+      }
+
+      context.globalAlpha = 0.5;
+      context.lineWidth = 1.5;
+      for (const downbeat of this.downbeats) {
+        const x = (downbeat / duration) * width;
+        context.beginPath();
+        context.moveTo(x, 0);
+        context.lineTo(x, height);
+        context.stroke();
+      }
+      context.globalAlpha = 1;
+    }
+
+    if (this.waveformData?.length >= 2) {
+      const points = Math.floor(this.waveformData.length / 2);
+      context.strokeStyle = accent;
+      context.lineWidth = Math.max(1, width / points + 0.2);
+      context.globalAlpha = 0.9;
+      context.beginPath();
+      for (let index = 0; index < points; index += 1) {
+        const minimum = this.waveformData[index * 2];
+        const maximum = this.waveformData[index * 2 + 1];
+        const x = ((index + 0.5) / points) * width;
+        context.moveTo(x, center - maximum * center * 0.88);
+        context.lineTo(x, center - minimum * center * 0.88);
+      }
+      context.stroke();
+      context.globalAlpha = 1;
+    }
+
+    if (duration > 0 && this.cue.has_cue()) {
+      const cueX = (this.cue.seconds() / duration) * width;
+      context.strokeStyle = mixAccent;
+      context.lineWidth = 2;
+      context.beginPath();
+      context.moveTo(cueX, 0);
+      context.lineTo(cueX, height);
+      context.stroke();
+    }
+
+    if (duration > 0) {
+      const playheadX = (this.audio.currentTime / duration) * width;
+      context.strokeStyle = "rgba(255, 255, 255, 0.92)";
+      context.lineWidth = 1.5;
+      context.beginPath();
+      context.moveTo(playheadX, 0);
+      context.lineTo(playheadX, height);
+      context.stroke();
+    }
   }
 
   destroy() {
+    this.resizeObserver.disconnect();
+    this.cue.free();
     if (this.objectUrl) {
       URL.revokeObjectURL(this.objectUrl);
       this.objectUrl = null;
@@ -224,6 +448,30 @@ function formatTime(seconds) {
   const minutes = Math.floor(wholeSeconds / 60);
   const remainder = String(wholeSeconds % 60).padStart(2, "0");
   return `${minutes}:${remainder}`;
+}
+
+function getDecodeContext() {
+  if (!state.decodeContext) {
+    state.decodeContext = new AudioContext({ latencyHint: "playback" });
+  }
+  return state.decodeContext;
+}
+
+function mixToMono(buffer) {
+  const mono = new Float32Array(buffer.length);
+  if (buffer.numberOfChannels === 0) {
+    return mono;
+  }
+
+  for (let channel = 0; channel < buffer.numberOfChannels; channel += 1) {
+    const samples = buffer.getChannelData(channel);
+    const scale = 1 / buffer.numberOfChannels;
+    for (let index = 0; index < samples.length; index += 1) {
+      mono[index] += samples[index] * scale;
+    }
+  }
+
+  return mono;
 }
 
 async function ensureAudioContext() {
@@ -259,6 +507,30 @@ function bindCrossfader() {
   });
 }
 
+function bindAnalysisWorker() {
+  state.analysisWorker = new Worker(new URL("./analysis-worker.js", import.meta.url), { type: "module" });
+  state.analysisWorker.addEventListener("message", (event) => {
+    const message = event.data ?? {};
+    const deck = state.decks.get(message.deckId);
+    if (!deck) {
+      return;
+    }
+
+    if (message.type === "analysis-result") {
+      deck.applyAnalysis(message);
+    } else if (message.type === "analysis-error") {
+      deck.applyAnalysisError(message);
+    }
+  });
+
+  state.analysisWorker.addEventListener("error", (error) => {
+    console.error("Track analysis worker failed", error);
+    for (const deck of state.decks.values()) {
+      deck.analysisStatus.textContent = "Analysis worker unavailable";
+    }
+  });
+}
+
 function describeCrossfader(value) {
   if (value === 0) {
     return "Center";
@@ -288,6 +560,7 @@ async function start() {
     ),
   );
 
+  bindAnalysisWorker();
   bindCrossfader();
   applyMixerGains();
 }
@@ -299,6 +572,8 @@ start().catch((error) => {
 });
 
 window.addEventListener("beforeunload", () => {
+  state.analysisWorker?.terminate();
+  state.decodeContext?.close();
   for (const deck of state.decks.values()) {
     deck.destroy();
   }
