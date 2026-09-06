@@ -1,6 +1,6 @@
 use std::f64::consts::FRAC_PI_2;
 
-use audio_analysis_rhythm::track::{analyze_rhythm_track, TrackRhythmConfig};
+use audio_analysis_rhythm::track::{TrackRhythmConfig, analyze_rhythm_track};
 use wasm_bindgen::prelude::*;
 
 const MIN_CROSSFADER: f64 = -1.0;
@@ -274,7 +274,8 @@ mod tests {
 
     #[test]
     fn silent_rhythm_analysis_has_no_tempo() {
-        let analysis = analyze_rhythm(&vec![0.0; 8_192], 8_000).expect("analyze silence");
+        let samples = vec![0.0; 8_192];
+        let analysis = analyze_rhythm(&samples, 8_000).expect("analyze silence");
         assert!(!analysis.has_bpm());
         assert!(analysis.beats().is_empty());
     }
