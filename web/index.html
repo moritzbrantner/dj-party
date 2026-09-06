@@ -19,7 +19,7 @@
             <span class="brand-mark" aria-hidden="true">◉</span>
             <span>DJ Party</span>
           </a>
-          <p class="tagline">Two decks. Local tracks. Rust analysis in the mix.</p>
+          <p class="tagline">Two decks. Local tracks. Rust timing and analysis in the mix.</p>
         </div>
         <div class="session-status" aria-label="Session status">
           <span class="status-dot" aria-hidden="true"></span>
@@ -74,7 +74,7 @@
               class="waveform"
               width="720"
               height="124"
-              aria-label="Deck A waveform, beat grid, cue point, and playhead"
+              aria-label="Deck A waveform, beat grid, loop, cue point, and playhead"
             ></canvas>
           </div>
           <div class="cue-row">
@@ -84,6 +84,48 @@
               <button id="deck-a-cue" class="mini-button cue-button" type="button" disabled>Cue</button>
             </div>
           </div>
+
+          <section class="timing-panel" aria-label="Deck A timing controls">
+            <div class="tempo-control">
+              <div class="timing-heading">
+                <span>Tempo</span>
+                <output id="deck-a-tempo-value">0.0%</output>
+              </div>
+              <input
+                id="deck-a-tempo"
+                class="tempo-slider"
+                type="range"
+                min="-16"
+                max="16"
+                step="0.1"
+                value="0"
+                aria-label="Deck A tempo adjustment"
+              />
+              <div class="tempo-scale" aria-hidden="true"><span>−16%</span><span>0</span><span>+16%</span></div>
+            </div>
+            <div class="timing-actions">
+              <label class="key-lock-control" for="deck-a-key-lock">
+                <input id="deck-a-key-lock" type="checkbox" checked />
+                <span>Key lock</span>
+              </label>
+              <output id="deck-a-effective-bpm" class="effective-bpm">— BPM</output>
+              <button id="deck-a-sync" class="mini-button sync-button" type="button" disabled>Sync</button>
+            </div>
+            <div class="timing-status" id="deck-a-timing-status" aria-live="polite">Waiting for BPM analysis</div>
+            <div class="loop-control">
+              <div class="timing-heading">
+                <span>Beat loop</span>
+                <output id="deck-a-loop-status">Beat grid required</output>
+              </div>
+              <div id="deck-a-loop-controls" class="loop-buttons" role="group" aria-label="Deck A beat loop length">
+                <button class="mini-button" type="button" data-loop-beats="1" disabled>1</button>
+                <button class="mini-button" type="button" data-loop-beats="2" disabled>2</button>
+                <button class="mini-button" type="button" data-loop-beats="4" disabled>4</button>
+                <button class="mini-button" type="button" data-loop-beats="8" disabled>8</button>
+                <button id="deck-a-loop-off" class="mini-button loop-off-button" type="button" disabled>Off</button>
+              </div>
+            </div>
+          </section>
 
           <div class="platter-wrap" aria-hidden="true">
             <div id="deck-a-platter" class="platter">
@@ -142,8 +184,8 @@
           </div>
 
           <p class="engine-note">
-            Equal-power gain values are calculated by the Rust/WASM mixer core and applied through Web Audio.
-            Rhythm analysis reuses the pinned audio-analysis Rust engine in a browser worker.
+            Rust/WASM owns equal-power mixing, tempo mapping, sync-rate limits, cue semantics, beat-loop boundaries,
+            and rhythm analysis. The browser applies Web Audio playback and key-lock behavior.
           </p>
         </section>
 
@@ -193,7 +235,7 @@
               class="waveform"
               width="720"
               height="124"
-              aria-label="Deck B waveform, beat grid, cue point, and playhead"
+              aria-label="Deck B waveform, beat grid, loop, cue point, and playhead"
             ></canvas>
           </div>
           <div class="cue-row">
@@ -203,6 +245,48 @@
               <button id="deck-b-cue" class="mini-button cue-button" type="button" disabled>Cue</button>
             </div>
           </div>
+
+          <section class="timing-panel" aria-label="Deck B timing controls">
+            <div class="tempo-control">
+              <div class="timing-heading">
+                <span>Tempo</span>
+                <output id="deck-b-tempo-value">0.0%</output>
+              </div>
+              <input
+                id="deck-b-tempo"
+                class="tempo-slider"
+                type="range"
+                min="-16"
+                max="16"
+                step="0.1"
+                value="0"
+                aria-label="Deck B tempo adjustment"
+              />
+              <div class="tempo-scale" aria-hidden="true"><span>−16%</span><span>0</span><span>+16%</span></div>
+            </div>
+            <div class="timing-actions">
+              <label class="key-lock-control" for="deck-b-key-lock">
+                <input id="deck-b-key-lock" type="checkbox" checked />
+                <span>Key lock</span>
+              </label>
+              <output id="deck-b-effective-bpm" class="effective-bpm">— BPM</output>
+              <button id="deck-b-sync" class="mini-button sync-button" type="button" disabled>Sync</button>
+            </div>
+            <div class="timing-status" id="deck-b-timing-status" aria-live="polite">Waiting for BPM analysis</div>
+            <div class="loop-control">
+              <div class="timing-heading">
+                <span>Beat loop</span>
+                <output id="deck-b-loop-status">Beat grid required</output>
+              </div>
+              <div id="deck-b-loop-controls" class="loop-buttons" role="group" aria-label="Deck B beat loop length">
+                <button class="mini-button" type="button" data-loop-beats="1" disabled>1</button>
+                <button class="mini-button" type="button" data-loop-beats="2" disabled>2</button>
+                <button class="mini-button" type="button" data-loop-beats="4" disabled>4</button>
+                <button class="mini-button" type="button" data-loop-beats="8" disabled>8</button>
+                <button id="deck-b-loop-off" class="mini-button loop-off-button" type="button" disabled>Off</button>
+              </div>
+            </div>
+          </section>
 
           <div class="platter-wrap" aria-hidden="true">
             <div id="deck-b-platter" class="platter">
@@ -229,7 +313,7 @@
       </section>
 
       <footer class="footer">
-        <p>Tracks, decoded PCM, waveform data, and cue points stay on this device.</p>
+        <p>Tracks, decoded PCM, timing state, waveform data, loops, and cue points stay on this device.</p>
         <p>Collaborative sessions via multiplayer-setup-service remain a later milestone.</p>
       </footer>
     </main>
