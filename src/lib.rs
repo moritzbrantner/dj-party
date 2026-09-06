@@ -7,8 +7,13 @@ const MIN_CROSSFADER: f64 = -1.0;
 const MAX_CROSSFADER: f64 = 1.0;
 const MIN_LEVEL: f64 = 0.0;
 const MAX_LEVEL: f64 = 1.0;
+const MIN_TEMPO_PERCENT: f64 = -16.0;
+const MAX_TEMPO_PERCENT: f64 = 16.0;
+const MIN_PLAYBACK_RATE: f64 = 0.84;
+const MAX_PLAYBACK_RATE: f64 = 1.16;
 const MAX_WAVEFORM_POINTS: usize = 2_048;
 const MAX_ANALYSIS_SECONDS: usize = 15 * 60;
+const LOOP_BEAT_COUNTS: [usize; 4] = [1, 2, 4, 8];
 
 #[wasm_bindgen]
 #[derive(Debug, Clone)]
@@ -129,6 +134,173 @@ impl RhythmAnalysis {
 }
 
 #[wasm_bindgen]
+#[derive(Debug, Clone)]
+pub struct SyncPlan {
+    valid: bool,
+    playback_rate: f64,
+    target_bpm: f64,
+    effective_bpm: f64,
+    limited: bool,
+}
+
+#[wasm_bindgen]
+impl SyncPlan {
+    pub fn valid(&self) -> bool {
+        self.valid
+    }
+
+    pub fn playback_rate(&self) -> f64 {
+        self.playback_rate
+    }
+
+    pub fn target_bpm(&self) -> f64 {
+        self.target_bpm
+    }
+
+    pub fn effective_bpm(&self) -> f64 {
+        self.effective_bpm
+    }
+
+    pub fn limited(&self) -> bool {
+        self.limited
+    }
+}
+
+#[wasm_bindgen]
+#[derive(Debug, Clone)]
+pub struct BeatLoop {
+    valid: bool,
+    start_seconds: f64,
+    end_seconds: f64,
+    beat_count: usize,
+}
+
+#[wasm_bindgen]
+impl BeatLoop {
+    pub fn valid(&self) -> bool {
+        self.valid
+    }
+
+    pub fn start_seconds(&self) -> f64 {
+        self.start_seconds
+    }
+
+    pub fn end_seconds(&self) -> f64 {
+        self.end_seconds
+    }
+
+    pub fn beat_count(&self) -> usize {
+        self.beat_count
+    }
+}
+
+#[wasm_bindgen]
+pub fn playback_rate_for_tempo(tempo_percent: f64) -> f64 {
+    if !tempo_percent.is_finite() {
+        return 1.0;
+    }
+
+    1.0 + tempo_percent.clamp(MIN_TEMPO_PERCENT, MAX_TEMPO_PERCENT) / 100.0
+}
+
+#[wasm_bindgen]
+pub fn tempo_percent_for_rate(playback_rate: f64) -> f64 {
+    if !playback_rate.is_finite() || playback_rate <= 0.0 {
+        return 0.0;
+    }
+
+    ((playback_rate.clamp(MIN_PLAYBACK_RATE, MAX_PLAYBACK_RATE) - 1.0) * 100.0)
+        .clamp(MIN_TEMPO_PERCENT, MAX_TEMPO_PERCENT)
+}
+
+#[wasm_bindgen]
+pub fn effective_bpm(base_bpm: f64, playback_rate: f64) -> f64 {
+    if !base_bpm.is_finite()
+        || base_bpm <= 0.0
+        || !playback_rate.is_finite()
+        || playback_rate <= 0.0
+    {
+        return f64::NAN;
+    }
+
+    base_bpm * playback_rate
+}
+
+#[wasm_bindgen]
+pub fn plan_sync(source_bpm: f64, target_bpm: f64, target_playback_rate: f64) -> SyncPlan {
+    if !source_bpm.is_finite()
+        || source_bpm <= 0.0
+        || !target_bpm.is_finite()
+        || target_bpm <= 0.0
+        || !target_playback_rate.is_finite()
+        || target_playback_rate <= 0.0
+    {
+        return invalid_sync_plan();
+    }
+
+    let target_bpm = target_bpm * target_playback_rate;
+    let requested_rate = target_bpm / source_bpm;
+    let playback_rate = requested_rate.clamp(MIN_PLAYBACK_RATE, MAX_PLAYBACK_RATE);
+    let effective_bpm = source_bpm * playback_rate;
+
+    SyncPlan {
+        valid: true,
+        playback_rate,
+        target_bpm,
+        effective_bpm,
+        limited: (playback_rate - requested_rate).abs() > f64::EPSILON,
+    }
+}
+
+#[wasm_bindgen]
+pub fn plan_beat_loop(
+    beats: &[f64],
+    current_seconds: f64,
+    beat_count: usize,
+    duration_seconds: f64,
+) -> BeatLoop {
+    if !current_seconds.is_finite()
+        || current_seconds < 0.0
+        || !duration_seconds.is_finite()
+        || duration_seconds <= 0.0
+        || !LOOP_BEAT_COUNTS.contains(&beat_count)
+        || beats.len() <= beat_count
+        || !valid_beat_grid(beats)
+    {
+        return invalid_beat_loop(beat_count);
+    }
+
+    let last_start_index = beats.len() - beat_count - 1;
+    let mut selected_index = None;
+    let mut selected_distance = f64::INFINITY;
+
+    for index in 0..=last_start_index {
+        let start = beats[index];
+        let end = beats[index + beat_count];
+        if start < 0.0 || end <= start || end > duration_seconds {
+            continue;
+        }
+
+        let distance = (start - current_seconds).abs();
+        if distance < selected_distance {
+            selected_index = Some(index);
+            selected_distance = distance;
+        }
+    }
+
+    let Some(index) = selected_index else {
+        return invalid_beat_loop(beat_count);
+    };
+
+    BeatLoop {
+        valid: true,
+        start_seconds: beats[index],
+        end_seconds: beats[index + beat_count],
+        beat_count,
+    }
+}
+
+#[wasm_bindgen]
 pub fn analyze_rhythm(samples: &[f32], sample_rate: u32) -> Result<RhythmAnalysis, JsValue> {
     if sample_rate == 0 {
         return Err(JsValue::from_str("sample rate must be greater than zero"));
@@ -186,6 +358,33 @@ pub fn waveform_extrema(samples: &[f32], point_count: usize) -> Vec<f32> {
     }
 
     extrema
+}
+
+fn invalid_sync_plan() -> SyncPlan {
+    SyncPlan {
+        valid: false,
+        playback_rate: 1.0,
+        target_bpm: f64::NAN,
+        effective_bpm: f64::NAN,
+        limited: false,
+    }
+}
+
+fn invalid_beat_loop(beat_count: usize) -> BeatLoop {
+    BeatLoop {
+        valid: false,
+        start_seconds: 0.0,
+        end_seconds: 0.0,
+        beat_count,
+    }
+}
+
+fn valid_beat_grid(beats: &[f64]) -> bool {
+    if beats.iter().any(|beat| !beat.is_finite()) {
+        return false;
+    }
+
+    beats.windows(2).all(|pair| pair[1] > pair[0])
 }
 
 fn normalized_position(crossfader: f64) -> f64 {
@@ -264,6 +463,49 @@ mod tests {
         assert_close(cue.seconds(), 12.5);
         cue.clear();
         assert!(!cue.has_cue());
+    }
+
+    #[test]
+    fn tempo_mapping_is_clamped_and_reversible_inside_range() {
+        assert_close(playback_rate_for_tempo(-50.0), 0.84);
+        assert_close(playback_rate_for_tempo(50.0), 1.16);
+        assert_close(playback_rate_for_tempo(7.5), 1.075);
+        assert_close(tempo_percent_for_rate(1.075), 7.5);
+    }
+
+    #[test]
+    fn sync_plan_matches_target_effective_bpm_when_reachable() {
+        let plan = plan_sync(120.0, 128.0, 1.0);
+        assert!(plan.valid());
+        assert!(!plan.limited());
+        assert_close(plan.playback_rate(), 128.0 / 120.0);
+        assert_close(plan.target_bpm(), 128.0);
+        assert_close(plan.effective_bpm(), 128.0);
+    }
+
+    #[test]
+    fn sync_plan_reports_when_rate_range_limits_match() {
+        let plan = plan_sync(100.0, 140.0, 1.0);
+        assert!(plan.valid());
+        assert!(plan.limited());
+        assert_close(plan.playback_rate(), 1.16);
+        assert_close(plan.effective_bpm(), 116.0);
+    }
+
+    #[test]
+    fn beat_loop_quantizes_to_nearest_beat_and_spans_requested_beats() {
+        let beats = [0.5, 1.0, 1.5, 2.0, 2.5, 3.0];
+        let beat_loop = plan_beat_loop(&beats, 1.82, 2, 4.0);
+        assert!(beat_loop.valid());
+        assert_close(beat_loop.start_seconds(), 2.0);
+        assert_close(beat_loop.end_seconds(), 3.0);
+        assert_eq!(beat_loop.beat_count(), 2);
+    }
+
+    #[test]
+    fn beat_loop_rejects_invalid_or_unsupported_grids() {
+        assert!(!plan_beat_loop(&[0.0, 1.0, 0.5], 0.5, 1, 2.0).valid());
+        assert!(!plan_beat_loop(&[0.0, 1.0, 2.0], 0.5, 3, 3.0).valid());
     }
 
     #[test]
