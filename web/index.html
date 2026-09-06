@@ -1,0 +1,196 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta
+      name="description"
+      content="DJ Party is a browser-first DJ mixer with a Rust/WASM core."
+    />
+    <title>DJ Party</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <main class="app-shell">
+      <header class="topbar">
+        <div>
+          <a class="brand" href="./" aria-label="DJ Party home">
+            <span class="brand-mark" aria-hidden="true">◉</span>
+            <span>DJ Party</span>
+          </a>
+          <p class="tagline">Two decks. Local tracks. Rust in the mix.</p>
+        </div>
+        <div class="session-status" aria-label="Session status">
+          <span class="status-dot" aria-hidden="true"></span>
+          Local session
+        </div>
+      </header>
+
+      <section class="mixer" aria-label="DJ mixer">
+        <article class="deck deck-a" data-deck="a">
+          <div class="deck-heading">
+            <span class="deck-label">Deck A</span>
+            <output id="deck-a-state" class="deck-state">Empty</output>
+          </div>
+
+          <div class="track-loader" id="deck-a-drop-zone">
+            <input id="deck-a-file" class="file-input" type="file" accept="audio/*,.mp3" />
+            <label class="file-label" for="deck-a-file">
+              <span class="file-icon" aria-hidden="true">＋</span>
+              <span>
+                <strong>Load a track</strong>
+                <small>Choose or drop an MP3/audio file</small>
+              </span>
+            </label>
+          </div>
+
+          <div class="track-info">
+            <p class="track-eyebrow">Now loaded</p>
+            <h2 id="deck-a-title" class="track-title">No track selected</h2>
+            <div class="time-row">
+              <span id="deck-a-current">0:00</span>
+              <span id="deck-a-duration">0:00</span>
+            </div>
+            <input
+              id="deck-a-seek"
+              class="seek"
+              type="range"
+              min="0"
+              max="1000"
+              value="0"
+              aria-label="Deck A track position"
+              disabled
+            />
+          </div>
+
+          <div class="platter-wrap" aria-hidden="true">
+            <div id="deck-a-platter" class="platter">
+              <div class="platter-ring"></div>
+              <div class="platter-label">A</div>
+            </div>
+          </div>
+
+          <div class="transport">
+            <button id="deck-a-restart" class="secondary-button" type="button" disabled>
+              ↶ Start
+            </button>
+            <button id="deck-a-play" class="play-button" type="button" disabled>
+              ▶ Play
+            </button>
+          </div>
+
+          <label class="level-control" for="deck-a-level">
+            <span>Deck level</span>
+            <output id="deck-a-level-value">100%</output>
+            <input id="deck-a-level" type="range" min="0" max="100" value="100" />
+          </label>
+        </article>
+
+        <section class="mixer-center" aria-label="Mixer controls">
+          <div class="master-heading">
+            <span class="eyebrow">Master</span>
+            <strong>Crossfader</strong>
+          </div>
+
+          <div class="crossfader-readout" aria-hidden="true">
+            <span>A</span>
+            <span>Mix</span>
+            <span>B</span>
+          </div>
+          <input
+            id="crossfader"
+            class="crossfader"
+            type="range"
+            min="-100"
+            max="100"
+            value="0"
+            aria-label="Crossfader"
+          />
+          <output id="crossfader-value" class="mix-value">Center</output>
+
+          <div class="signal-panel" aria-label="Current Rust mixer gains">
+            <div>
+              <span>Gain A</span>
+              <strong id="gain-a">0.707</strong>
+            </div>
+            <div>
+              <span>Gain B</span>
+              <strong id="gain-b">0.707</strong>
+            </div>
+          </div>
+
+          <p class="engine-note">
+            Equal-power gain values are calculated by the Rust/WASM mixer core and applied through Web Audio.
+          </p>
+        </section>
+
+        <article class="deck deck-b" data-deck="b">
+          <div class="deck-heading">
+            <span class="deck-label">Deck B</span>
+            <output id="deck-b-state" class="deck-state">Empty</output>
+          </div>
+
+          <div class="track-loader" id="deck-b-drop-zone">
+            <input id="deck-b-file" class="file-input" type="file" accept="audio/*,.mp3" />
+            <label class="file-label" for="deck-b-file">
+              <span class="file-icon" aria-hidden="true">＋</span>
+              <span>
+                <strong>Load a track</strong>
+                <small>Choose or drop an MP3/audio file</small>
+              </span>
+            </label>
+          </div>
+
+          <div class="track-info">
+            <p class="track-eyebrow">Now loaded</p>
+            <h2 id="deck-b-title" class="track-title">No track selected</h2>
+            <div class="time-row">
+              <span id="deck-b-current">0:00</span>
+              <span id="deck-b-duration">0:00</span>
+            </div>
+            <input
+              id="deck-b-seek"
+              class="seek"
+              type="range"
+              min="0"
+              max="1000"
+              value="0"
+              aria-label="Deck B track position"
+              disabled
+            />
+          </div>
+
+          <div class="platter-wrap" aria-hidden="true">
+            <div id="deck-b-platter" class="platter">
+              <div class="platter-ring"></div>
+              <div class="platter-label">B</div>
+            </div>
+          </div>
+
+          <div class="transport">
+            <button id="deck-b-restart" class="secondary-button" type="button" disabled>
+              ↶ Start
+            </button>
+            <button id="deck-b-play" class="play-button" type="button" disabled>
+              ▶ Play
+            </button>
+          </div>
+
+          <label class="level-control" for="deck-b-level">
+            <span>Deck level</span>
+            <output id="deck-b-level-value">100%</output>
+            <input id="deck-b-level" type="range" min="0" max="100" value="100" />
+          </label>
+        </article>
+      </section>
+
+      <footer class="footer">
+        <p>Tracks stay on this device. Nothing is uploaded by this MVP.</p>
+        <p>Collaborative sessions via multiplayer-setup-service are a later milestone.</p>
+      </footer>
+    </main>
+
+    <noscript>DJ Party needs JavaScript to connect the browser audio layer to the Rust/WASM mixer.</noscript>
+    <script type="module" src="./app.js"></script>
+  </body>
+</html>
