@@ -29,7 +29,7 @@ Imported library blobs, selected tracks, decoded PCM, timing state, cue points, 
 
 ## Architecture
 
-Rust/WASM is authoritative for deterministic mixer state, gain calculations, tempo/rate mapping, BPM sync planning, beat/bar position, phase-sync planning, hot-cue quantization, beat jumps, beat-loop boundaries, and headphone-monitor gain semantics.
+DJ Party's Rust/WASM layer is authoritative for deterministic mixer state and product policy: tempo range, effective-BPM/BPM-sync surface, beat/bar and phase-sync behavior, hot-cue and beat-jump semantics, beat-loop policy, and headphone-monitor semantics. Reusable policy-neutral audio/DJ calculations such as equal-power crossfade gains, tempo/rate conversion, tempo-only BPM-sync math, generic beat-loop selection, and waveform extrema come from the pinned `audio-analysis` processing crates and are consumed rather than reimplemented here.
 
 The browser layer owns browser-only capabilities: local file and folder selection, browser-local IndexedDB track storage, object URLs, audio decoding, `AudioContext`, media-element playback, pitch-preservation/key-lock behavior, DOM rendering, workers, physical audio-output selection, and applying the seek/rate/gain plans returned by Rust.
 
@@ -39,7 +39,7 @@ Headphone cueing is deliberately pre-fader: the selected deck cue branches bypas
 
 Reusable ownership remains explicit:
 
-- BPM, beat-grid, downbeat, and related rhythm analysis comes from `audio-analysis` rather than being reimplemented here;
+- BPM, beat-grid, downbeat, related rhythm analysis, and reusable policy-neutral playback/DJ calculations come from `audio-analysis` rather than being reimplemented here;
 - collaborative lobby/signaling should integrate through `multiplayer-setup-service` rather than becoming part of the mixer core.
 
 ## Build and validate
