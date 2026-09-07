@@ -262,18 +262,13 @@ pub fn plan_phase_sync(
     reference_current_seconds: f64,
 ) -> PhaseSyncPlan {
     let tempo = plan_sync(source_bpm, reference_bpm, reference_playback_rate);
-    if !tempo.valid()
-        || !source_duration_seconds.is_finite()
-        || source_duration_seconds <= 0.0
-    {
+    if !tempo.valid() || !source_duration_seconds.is_finite() || source_duration_seconds <= 0.0 {
         return invalid_phase_sync_plan();
     }
 
-    let Some(source_position) = locate_position(
-        source_beats,
-        source_downbeats,
-        source_current_seconds,
-    ) else {
+    let Some(_source_position) =
+        locate_position(source_beats, source_downbeats, source_current_seconds)
+    else {
         return invalid_phase_sync_plan();
     };
     let Some(reference_position) = locate_position(
@@ -312,7 +307,6 @@ pub fn plan_phase_sync(
         }
     };
 
-    let _ = source_position;
     PhaseSyncPlan {
         valid: true,
         playback_rate: tempo.playback_rate(),
@@ -358,8 +352,7 @@ fn locate_position(beats: &[f64], downbeats: &[f64], current_seconds: f64) -> Op
 
     let beat_start_seconds = beats[beat_index];
     let beat_end_seconds = beats[beat_index + 1];
-    let phase = ((current_seconds - beat_start_seconds)
-        / (beat_end_seconds - beat_start_seconds))
+    let phase = ((current_seconds - beat_start_seconds) / (beat_end_seconds - beat_start_seconds))
         .clamp(0.0, 1.0);
     let (bar_index, beat_in_bar) = bar_context(beats, downbeats, beat_index);
 
@@ -416,7 +409,10 @@ fn bar_context(beats: &[f64], downbeats: &[f64], beat_index: usize) -> (usize, u
     }
 
     let beat_start = beats[beat_index];
-    let Some(downbeat_index) = downbeats.iter().rposition(|downbeat| *downbeat <= beat_start) else {
+    let Some(downbeat_index) = downbeats
+        .iter()
+        .rposition(|downbeat| *downbeat <= beat_start)
+    else {
         return (0, 0);
     };
     let downbeat = downbeats[downbeat_index];
@@ -424,9 +420,9 @@ fn bar_context(beats: &[f64], downbeats: &[f64], beat_index: usize) -> (usize, u
         .iter()
         .enumerate()
         .min_by(|(_, left), (_, right)| {
-            (*left - downbeat)
+            (**left - downbeat)
                 .abs()
-                .total_cmp(&(*right - downbeat).abs())
+                .total_cmp(&(**right - downbeat).abs())
         })
         .map(|(index, _)| index);
     let Some(anchor) = anchor else {
@@ -442,11 +438,7 @@ fn bar_context(beats: &[f64], downbeats: &[f64], beat_index: usize) -> (usize, u
     )
 }
 
-fn nearest_beat_seconds(
-    beats: &[f64],
-    current_seconds: f64,
-    duration_seconds: f64,
-) -> Option<f64> {
+fn nearest_beat_seconds(beats: &[f64], current_seconds: f64, duration_seconds: f64) -> Option<f64> {
     if beats.is_empty()
         || !current_seconds.is_finite()
         || current_seconds < 0.0
@@ -460,7 +452,11 @@ fn nearest_beat_seconds(
 
     let mut selected = None;
     let mut selected_distance = f64::INFINITY;
-    for beat in beats.iter().copied().filter(|beat| *beat <= duration_seconds) {
+    for beat in beats
+        .iter()
+        .copied()
+        .filter(|beat| *beat <= duration_seconds)
+    {
         let distance = (beat - current_seconds).abs();
         if distance < selected_distance {
             selected = Some(beat);
@@ -476,7 +472,9 @@ fn cue_slot_index(slot: usize) -> Option<usize> {
 
 fn valid_nonnegative_grid(values: &[f64]) -> bool {
     !values.is_empty()
-        && values.iter().all(|value| value.is_finite() && *value >= 0.0)
+        && values
+            .iter()
+            .all(|value| value.is_finite() && *value >= 0.0)
         && valid_beat_grid(values)
 }
 
@@ -568,16 +566,7 @@ mod tests {
         let beats = [0.0, 0.5, 1.0, 1.5, 2.0, 2.5, 3.0, 3.5, 4.0];
         let downbeats = [0.0, 2.0, 4.0];
         let plan = plan_phase_sync(
-            120.0,
-            &beats,
-            &downbeats,
-            1.8,
-            4.0,
-            128.0,
-            1.0,
-            &beats,
-            &downbeats,
-            2.25,
+            120.0, &beats, &downbeats, 1.8, 4.0, 128.0, 1.0, &beats, &downbeats, 2.25,
         );
 
         assert!(plan.valid());
@@ -593,16 +582,7 @@ mod tests {
         let beats = [0.0, 0.5, 1.0, 1.5, 2.0];
         let downbeats = [0.0, 2.0];
         let plan = plan_phase_sync(
-            120.0,
-            &beats,
-            &downbeats,
-            8.0,
-            10.0,
-            120.0,
-            1.0,
-            &beats,
-            &downbeats,
-            1.25,
+            120.0, &beats, &downbeats, 8.0, 10.0, 120.0, 1.0, &beats, &downbeats, 1.25,
         );
 
         assert!(!plan.valid());
