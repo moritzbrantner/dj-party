@@ -7,8 +7,8 @@ DJ Party is a browser-first DJ application with a Rust core. The long-term direc
 ## Ownership boundaries
 
 - Rust is authoritative for deterministic mixer state and mix calculations.
-- Rust is authoritative for tempo/rate mapping, effective BPM, BPM-sync planning, beat/bar position, phase-sync planning, cue quantization, beat jumps, beat-loop boundaries, and headphone-monitor gain semantics.
-- The browser adapter owns browser-only capabilities: local file/folder selection, browser-local IndexedDB track storage, object URLs, Web Audio nodes, media-element playback, pitch-preservation/key-lock behavior, physical audio-output selection, DOM rendering, workers, and applying Rust-produced transport/gain plans.
+- Rust is authoritative for DJ Party's tempo/rate policy, effective-BPM and BPM-sync surface, beat/bar position, phase-sync planning, cue quantization, beat jumps, beat-loop policy, and headphone-monitor gain semantics. Reusable pure audio calculations such as equal-power crossfade gains, tempo/rate conversion, tempo-only BPM-sync math, generic beat-loop selection, and waveform extrema belong to `audio-analysis` and must be consumed rather than duplicated here.
+- The browser adapter owns browser-only capabilities: local file/folder selection, browser-local IndexedDB track storage, audio decoding, object URLs, Web Audio nodes, media-element playback, pitch-preservation/key-lock behavior, physical audio-output selection, DOM rendering, workers, and applying Rust-produced transport/gain plans.
 - The browser-local music collection must reuse the existing deck file-selection/loading path when loading a saved track. Do not duplicate deck reset, analysis, transport, or mixer semantics inside the library adapter.
 - Local library import must be idempotent for the same file identity; re-importing the same track must not create duplicate collection rows.
 - Headphone cue branches are pre-fader. The monitor's Master contribution must follow the existing Rust-owned post-fader deck gains rather than duplicate crossfader or deck-level math in JavaScript.
@@ -16,7 +16,7 @@ DJ Party is a browser-first DJ application with a Rust core. The long-term direc
 - Do not duplicate Rust mixer, monitor, or transport formulas in JavaScript.
 - Local library blobs, tracks, decoded PCM, timing state, cue points, loops, and monitor state must stay local unless a future feature explicitly introduces user-approved transfer or sharing.
 - Beat-dependent controls must fail closed outside the verified beat-grid horizon; never silently snap to stale analyzed data.
-- `audio-analysis` remains authoritative for BPM, beat-grid, downbeat, Fourier, and related reusable analysis semantics.
+- `audio-analysis` remains authoritative for BPM, beat-grid, downbeat, Fourier, related reusable analysis semantics, and reusable policy-neutral audio/DJ calculations.
 - Multiplayer is not part of the current local mixer slices. When introduced, keep signaling/session setup behind a narrow adapter to `multiplayer-setup-service`.
 
 ## Browser acceptance

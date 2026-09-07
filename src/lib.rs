@@ -1,5 +1,10 @@
-use std::f64::consts::FRAC_PI_2;
-
+use audio_analysis_processing::operations::playback::{
+    TempoRange, effective_bpm as shared_effective_bpm, equal_power_crossfade_gains,
+    plan_beat_loop as shared_plan_beat_loop, plan_bpm_sync,
+    playback_rate_for_tempo as shared_playback_rate_for_tempo,
+    tempo_percent_for_rate as shared_tempo_percent_for_rate, valid_beat_grid,
+    waveform_extrema as shared_waveform_extrema,
+};
 use audio_analysis_rhythm::track::{TrackRhythmConfig, analyze_rhythm_track};
 use wasm_bindgen::prelude::*;
 
@@ -14,8 +19,7 @@ const MIN_LEVEL: f64 = 0.0;
 const MAX_LEVEL: f64 = 1.0;
 const MIN_TEMPO_PERCENT: f64 = -16.0;
 const MAX_TEMPO_PERCENT: f64 = 16.0;
-const MIN_PLAYBACK_RATE: f64 = 0.84;
-const MAX_PLAYBACK_RATE: f64 = 1.16;
+const DJ_TEMPO_RANGE: TempoRange = TempoRange::new(MIN_TEMPO_PERCENT, MAX_TEMPO_PERCENT);
 const MAX_WAVEFORM_POINTS: usize = 2_048;
 const MAX_ANALYSIS_SECONDS: usize = 15 * 60;
 const LOOP_BEAT_COUNTS: [usize; 4] = [1, 2, 4, 8];
@@ -62,13 +66,11 @@ impl Mixer {
     }
 
     pub fn deck_a_gain(&self) -> f64 {
-        let position = normalized_position(self.crossfader);
-        (position * FRAC_PI_2).cos() * self.deck_a_level
+        equal_power_crossfade_gains(self.crossfader).left * self.deck_a_level
     }
 
     pub fn deck_b_gain(&self) -> f64 {
-        let position = normalized_position(self.crossfader);
-        (position * FRAC_PI_2).sin() * self.deck_b_level
+        equal_power_crossfade_gains(self.crossfader).right * self.deck_b_level
     }
 }
 
@@ -201,59 +203,32 @@ impl BeatLoop {
 
 #[wasm_bindgen]
 pub fn playback_rate_for_tempo(tempo_percent: f64) -> f64 {
-    if !tempo_percent.is_finite() {
-        return 1.0;
-    }
-
-    1.0 + tempo_percent.clamp(MIN_TEMPO_PERCENT, MAX_TEMPO_PERCENT) / 100.0
+    shared_playback_rate_for_tempo(tempo_percent, DJ_TEMPO_RANGE).unwrap_or(1.0)
 }
 
 #[wasm_bindgen]
 pub fn tempo_percent_for_rate(playback_rate: f64) -> f64 {
-    if !playback_rate.is_finite() || playback_rate <= 0.0 {
-        return 0.0;
-    }
-
-    ((playback_rate.clamp(MIN_PLAYBACK_RATE, MAX_PLAYBACK_RATE) - 1.0) * 100.0)
-        .clamp(MIN_TEMPO_PERCENT, MAX_TEMPO_PERCENT)
+    shared_tempo_percent_for_rate(playback_rate, DJ_TEMPO_RANGE).unwrap_or(0.0)
 }
 
 #[wasm_bindgen]
 pub fn effective_bpm(base_bpm: f64, playback_rate: f64) -> f64 {
-    if !base_bpm.is_finite()
-        || base_bpm <= 0.0
-        || !playback_rate.is_finite()
-        || playback_rate <= 0.0
-    {
-        return f64::NAN;
-    }
-
-    base_bpm * playback_rate
+    shared_effective_bpm(base_bpm, playback_rate).unwrap_or(f64::NAN)
 }
 
 #[wasm_bindgen]
 pub fn plan_sync(source_bpm: f64, target_bpm: f64, target_playback_rate: f64) -> SyncPlan {
-    if !source_bpm.is_finite()
-        || source_bpm <= 0.0
-        || !target_bpm.is_finite()
-        || target_bpm <= 0.0
-        || !target_playback_rate.is_finite()
-        || target_playback_rate <= 0.0
-    {
+    let Some(plan) = plan_bpm_sync(source_bpm, target_bpm, target_playback_rate, DJ_TEMPO_RANGE)
+    else {
         return invalid_sync_plan();
-    }
-
-    let target_bpm = target_bpm * target_playback_rate;
-    let requested_rate = target_bpm / source_bpm;
-    let playback_rate = requested_rate.clamp(MIN_PLAYBACK_RATE, MAX_PLAYBACK_RATE);
-    let effective_bpm = source_bpm * playback_rate;
+    };
 
     SyncPlan {
         valid: true,
-        playback_rate,
-        target_bpm,
-        effective_bpm,
-        limited: (playback_rate - requested_rate).abs() > f64::EPSILON,
+        playback_rate: plan.playback_rate,
+        target_bpm: plan.target_effective_bpm,
+        effective_bpm: plan.source_effective_bpm,
+        limited: plan.limited,
     }
 }
 
@@ -264,48 +239,20 @@ pub fn plan_beat_loop(
     beat_count: usize,
     duration_seconds: f64,
 ) -> BeatLoop {
-    if !current_seconds.is_finite()
-        || current_seconds < 0.0
-        || !duration_seconds.is_finite()
-        || duration_seconds <= 0.0
-        || !LOOP_BEAT_COUNTS.contains(&beat_count)
-        || beats.len() <= beat_count
-        || !valid_beat_grid(beats)
-    {
+    if !LOOP_BEAT_COUNTS.contains(&beat_count) {
         return invalid_beat_loop(beat_count);
     }
 
-    if current_seconds > beats[beats.len() - 1] {
-        return invalid_beat_loop(beat_count);
-    }
-
-    let last_start_index = beats.len() - beat_count - 1;
-    let mut selected_index = None;
-    let mut selected_distance = f64::INFINITY;
-
-    for index in 0..=last_start_index {
-        let start = beats[index];
-        let end = beats[index + beat_count];
-        if start < 0.0 || end <= start || end > duration_seconds {
-            continue;
-        }
-
-        let distance = (start - current_seconds).abs();
-        if distance < selected_distance {
-            selected_index = Some(index);
-            selected_distance = distance;
-        }
-    }
-
-    let Some(index) = selected_index else {
+    let Some(plan) = shared_plan_beat_loop(beats, current_seconds, beat_count, duration_seconds)
+    else {
         return invalid_beat_loop(beat_count);
     };
 
     BeatLoop {
         valid: true,
-        start_seconds: beats[index],
-        end_seconds: beats[index + beat_count],
-        beat_count,
+        start_seconds: plan.start_seconds,
+        end_seconds: plan.end_seconds,
+        beat_count: plan.beat_count,
     }
 }
 
@@ -339,34 +286,11 @@ pub fn analyze_rhythm(samples: &[f32], sample_rate: u32) -> Result<RhythmAnalysi
 
 #[wasm_bindgen]
 pub fn waveform_extrema(samples: &[f32], point_count: usize) -> Vec<f32> {
-    if samples.is_empty() || point_count == 0 {
-        return Vec::new();
-    }
-
-    let point_count = point_count.min(MAX_WAVEFORM_POINTS).min(samples.len());
-    let mut extrema = Vec::with_capacity(point_count * 2);
-
-    for index in 0..point_count {
-        let start = index * samples.len() / point_count;
-        let mut end = (index + 1) * samples.len() / point_count;
-        if end <= start {
-            end = start + 1;
-        }
-
-        let mut minimum = 0.0_f32;
-        let mut maximum = 0.0_f32;
-        for sample in &samples[start..end.min(samples.len())] {
-            if !sample.is_finite() {
-                continue;
-            }
-            minimum = minimum.min(*sample);
-            maximum = maximum.max(*sample);
-        }
-        extrema.push(minimum.clamp(-1.0, 1.0));
-        extrema.push(maximum.clamp(-1.0, 1.0));
-    }
-
-    extrema
+    let point_count = point_count.min(MAX_WAVEFORM_POINTS);
+    shared_waveform_extrema(samples, point_count)
+        .into_iter()
+        .flat_map(|point| [point.min, point.max])
+        .collect()
 }
 
 fn invalid_sync_plan() -> SyncPlan {
@@ -386,18 +310,6 @@ fn invalid_beat_loop(beat_count: usize) -> BeatLoop {
         end_seconds: 0.0,
         beat_count,
     }
-}
-
-fn valid_beat_grid(beats: &[f64]) -> bool {
-    if beats.iter().any(|beat| !beat.is_finite()) {
-        return false;
-    }
-
-    beats.windows(2).all(|pair| pair[1] > pair[0])
-}
-
-fn normalized_position(crossfader: f64) -> f64 {
-    (crossfader.clamp(MIN_CROSSFADER, MAX_CROSSFADER) + 1.0) * 0.5
 }
 
 #[cfg(test)]
