@@ -1,7 +1,9 @@
+import { AudioOutputRouter, outputDeviceLabel } from "./output-routing.js";
 import { PerformanceControls } from "./performance.js";
 import init, {
   CuePoint,
   Mixer,
+  MonitorMixer,
   effective_bpm,
   plan_beat_loop,
   plan_sync,
@@ -13,6 +15,13 @@ const state = {
   audioContext: null,
   decodeContext: null,
   mixer: null,
+  monitor: null,
+  outputRouter: null,
+  monitoringReady: false,
+  outputLabels: {
+    master: "System default",
+    headphones: null,
+  },
   decks: new Map(),
   analysisWorker: null,
   nextAnalysisRequestId: 0,
@@ -28,6 +37,7 @@ class Deck {
     this.cue = new CuePoint();
     this.sourceNode = null;
     this.gainNode = null;
+    this.cueGainNode = null;
     this.objectUrl = null;
     this.analysisRequestId = 0;
     this.waveformData = null;
@@ -48,6 +58,7 @@ class Deck {
     this.setCueButton = document.querySelector(`#deck-${id}-set-cue`);
     this.cueButton = document.querySelector(`#deck-${id}-cue`);
     this.cueTime = document.querySelector(`#deck-${id}-cue-time`);
+    this.monitorCueButton = document.querySelector(`#deck-${id}-monitor-cue`);
     this.level = document.querySelector(`#deck-${id}-level`);
     this.levelValue = document.querySelector(`#deck-${id}-level-value`);
     this.deckState = document.querySelector(`#deck-${id}-state`);
@@ -142,6 +153,20 @@ class Deck {
       this.audio.currentTime = Math.min(this.cue.seconds(), this.audio.duration || this.cue.seconds());
       this.enforceLoop();
       this.updateProgress();
+    });
+
+    this.monitorCueButton.addEventListener("click", () => {
+      if (!state.monitoringReady) {
+        return;
+      }
+
+      if (this.id === "a") {
+        state.monitor.set_deck_a_cue(!state.monitor.deck_a_cue_enabled());
+      } else {
+        state.monitor.set_deck_b_cue(!state.monitor.deck_b_cue_enabled());
+      }
+      updateMonitorCueButtons();
+      applyMonitoringGains();
     });
 
     this.seek.addEventListener("input", () => {
@@ -368,6 +393,7 @@ class Deck {
     await ensureAudioContext();
     this.ensureAudioGraph();
     applyMixerGains();
+    applyMonitoringGains();
 
     try {
       await this.audio.play();
@@ -382,10 +408,22 @@ class Deck {
       return;
     }
 
+    const cueDestination = state.outputRouter.cueDestination();
+    const masterMonitorInput = state.outputRouter.masterMonitorInput();
+    if (!cueDestination || !masterMonitorInput) {
+      throw new Error("Monitoring graph was not initialized with the playback AudioContext");
+    }
+
     this.sourceNode = state.audioContext.createMediaElementSource(this.audio);
     this.gainNode = state.audioContext.createGain();
+    this.cueGainNode = state.audioContext.createGain();
+    this.cueGainNode.gain.value = 0;
+
     this.sourceNode.connect(this.gainNode);
+    this.sourceNode.connect(this.cueGainNode);
     this.gainNode.connect(state.audioContext.destination);
+    this.gainNode.connect(masterMonitorInput);
+    this.cueGainNode.connect(cueDestination);
   }
 
   applyGain() {
@@ -395,6 +433,15 @@ class Deck {
 
     const gain = this.mixerGainGetter();
     this.gainNode.gain.setTargetAtTime(gain, state.audioContext.currentTime, 0.012);
+  }
+
+  applyCueGain() {
+    if (!this.cueGainNode || !state.audioContext) {
+      return;
+    }
+
+    const gain = this.id === "a" ? state.monitor.deck_a_cue_gain() : state.monitor.deck_b_cue_gain();
+    this.cueGainNode.gain.setTargetAtTime(gain, state.audioContext.currentTime, 0.012);
   }
 
   setPlaybackRate(rate) {
@@ -662,6 +709,9 @@ class Deck {
     this.stopPlaybackAnimation();
     this.resizeObserver.disconnect();
     this.performance.destroy();
+    this.sourceNode?.disconnect();
+    this.gainNode?.disconnect();
+    this.cueGainNode?.disconnect();
     this.cue.free();
     if (this.objectUrl) {
       URL.revokeObjectURL(this.objectUrl);
@@ -739,6 +789,7 @@ function mixToMono(buffer) {
 async function ensureAudioContext() {
   if (!state.audioContext) {
     state.audioContext = new AudioContext({ latencyHint: "interactive" });
+    state.outputRouter.attachContext(state.audioContext);
   }
 
   if (state.audioContext.state === "suspended") {
@@ -755,6 +806,12 @@ function applyMixerGains() {
 
   document.querySelector("#gain-a").textContent = state.mixer.deck_a_gain().toFixed(3);
   document.querySelector("#gain-b").textContent = state.mixer.deck_b_gain().toFixed(3);
+}
+
+function applyMonitoringGains() {
+  state.outputRouter.setMasterMonitorGain(state.monitor.master_gain());
+  state.decks.get("a")?.applyCueGain();
+  state.decks.get("b")?.applyCueGain();
 }
 
 function refreshSyncButtons() {
@@ -781,6 +838,186 @@ function bindCrossfader() {
     output.textContent = describeCrossfader(value);
     applyMixerGains();
   });
+}
+
+function installMonitoringUi() {
+  if (!document.querySelector('link[data-monitoring-styles]')) {
+    const stylesheet = document.createElement("link");
+    stylesheet.rel = "stylesheet";
+    stylesheet.href = new URL("./monitoring.css", import.meta.url).href;
+    stylesheet.dataset.monitoringStyles = "true";
+    document.head.append(stylesheet);
+  }
+
+  for (const id of ["a", "b"]) {
+    const cueRow = document.querySelector(`#deck-${id}-cue`)?.closest(".cue-row");
+    cueRow?.insertAdjacentHTML(
+      "afterend",
+      `<div class="monitor-cue-row">
+        <span>Pre-fader monitor</span>
+        <button id="deck-${id}-monitor-cue" class="mini-button monitor-cue-button" type="button" aria-pressed="false" disabled>
+          Headphones: off
+        </button>
+      </div>`,
+    );
+  }
+
+  const engineNote = document.querySelector(".mixer-center .engine-note");
+  engineNote?.insertAdjacentHTML(
+    "beforebegin",
+    `<section class="monitoring-panel" aria-label="Headphone monitoring">
+      <div class="monitoring-heading">
+        <strong>Headphone monitoring</strong>
+        <output id="monitor-routing-status" class="monitor-routing-status" aria-live="polite">
+          Checking browser output routing…
+        </output>
+      </div>
+      <div class="monitor-routing-actions">
+        <button id="choose-headphones" class="mini-button" type="button">Choose headphones</button>
+        <button id="choose-master-output" class="mini-button" type="button">Choose master output</button>
+      </div>
+      <label class="monitor-control" for="monitor-mix">
+        <span class="monitor-control-heading"><span>Cue ↔ Master</span><output id="monitor-mix-value">Cue</output></span>
+        <input id="monitor-mix" type="range" min="0" max="100" value="0" disabled />
+      </label>
+      <label class="monitor-control" for="monitor-level">
+        <span class="monitor-control-heading"><span>Headphone level</span><output id="monitor-level-value">75%</output></span>
+        <input id="monitor-level" type="range" min="0" max="100" value="75" disabled />
+      </label>
+      <p class="monitor-note">
+        Deck cue is pre-fader. Master monitoring follows the Rust-owned deck gains and crossfader. Separate outputs require secure browser audio-output APIs.
+      </p>
+    </section>`,
+  );
+}
+
+function bindMonitoring() {
+  const chooseHeadphones = document.querySelector("#choose-headphones");
+  const chooseMaster = document.querySelector("#choose-master-output");
+  const mix = document.querySelector("#monitor-mix");
+  const mixValue = document.querySelector("#monitor-mix-value");
+  const level = document.querySelector("#monitor-level");
+  const levelValue = document.querySelector("#monitor-level-value");
+
+  chooseHeadphones.disabled = !state.outputRouter.supportsOutputSelection();
+  chooseMaster.disabled = !state.outputRouter.supportsMasterOutputSelection();
+  if (!state.outputRouter.supportsMasterOutputSelection()) {
+    chooseMaster.title = "This browser keeps the master on the system default output";
+  }
+
+  chooseHeadphones.addEventListener("click", async () => {
+    try {
+      const device = await state.outputRouter.selectOutput();
+      await ensureAudioContext();
+      await state.outputRouter.useHeadphoneOutput(device);
+      state.monitoringReady = true;
+      state.outputLabels.headphones = outputDeviceLabel(device, "Selected headphones");
+      setMonitoringControlsEnabled(true);
+      renderRoutingStatus();
+      applyMonitoringGains();
+    } catch (error) {
+      console.error("Could not select headphone output", error);
+      renderRoutingStatus(describeOutputError(error, "Headphone output selection failed"));
+    }
+  });
+
+  chooseMaster.addEventListener("click", async () => {
+    try {
+      const device = await state.outputRouter.selectOutput();
+      await ensureAudioContext();
+      await state.outputRouter.useMasterOutput(device);
+      state.outputLabels.master = outputDeviceLabel(device, "Selected master output");
+      renderRoutingStatus();
+    } catch (error) {
+      console.error("Could not select master output", error);
+      renderRoutingStatus(describeOutputError(error, "Master output selection failed"));
+    }
+  });
+
+  mix.addEventListener("input", () => {
+    const value = Number(mix.value);
+    state.monitor.set_mix(value / 100);
+    mixValue.textContent = describeMonitorMix(value);
+    applyMonitoringGains();
+  });
+
+  level.addEventListener("input", () => {
+    state.monitor.set_level(Number(level.value) / 100);
+    levelValue.textContent = `${level.value}%`;
+    applyMonitoringGains();
+  });
+
+  state.outputRouter.addEventListener("headphoneoutputlost", () => {
+    state.monitoringReady = false;
+    state.outputLabels.headphones = null;
+    state.monitor.set_deck_a_cue(false);
+    state.monitor.set_deck_b_cue(false);
+    setMonitoringControlsEnabled(false);
+    updateMonitorCueButtons();
+    applyMonitoringGains();
+    renderRoutingStatus("Headphone output disconnected; cue routing stopped");
+  });
+
+  state.outputRouter.addEventListener("masteroutputlost", () => {
+    state.outputLabels.master = "System default";
+    renderRoutingStatus("Selected master output disconnected; browser fallback applies");
+  });
+
+  setMonitoringControlsEnabled(false);
+  updateMonitorCueButtons();
+  renderRoutingStatus();
+}
+
+function setMonitoringControlsEnabled(enabled) {
+  document.querySelector("#monitor-mix").disabled = !enabled;
+  document.querySelector("#monitor-level").disabled = !enabled;
+  for (const deck of state.decks.values()) {
+    deck.monitorCueButton.disabled = !enabled;
+  }
+}
+
+function updateMonitorCueButtons() {
+  for (const deck of state.decks.values()) {
+    const enabled = deck.id === "a" ? state.monitor.deck_a_cue_enabled() : state.monitor.deck_b_cue_enabled();
+    deck.monitorCueButton.setAttribute("aria-pressed", String(enabled));
+    deck.monitorCueButton.textContent = enabled ? "Headphones: on" : "Headphones: off";
+  }
+}
+
+function renderRoutingStatus(override = null) {
+  const output = document.querySelector("#monitor-routing-status");
+  if (override) {
+    output.textContent = override;
+    return;
+  }
+
+  if (!state.outputRouter.supportsOutputSelection()) {
+    output.textContent = "Separate headphone output selection is unavailable in this browser; master playback is unchanged.";
+    return;
+  }
+
+  const headphones = state.outputLabels.headphones ?? "not selected";
+  output.textContent = `Master: ${state.outputLabels.master} · Headphones: ${headphones}`;
+}
+
+function describeOutputError(error, fallback) {
+  if (error?.name === "NotAllowedError") {
+    return "Audio output selection was not granted";
+  }
+  if (error?.name === "NotFoundError") {
+    return "No selectable audio output was found";
+  }
+  return fallback;
+}
+
+function describeMonitorMix(value) {
+  if (value <= 0) {
+    return "Cue";
+  }
+  if (value >= 100) {
+    return "Master";
+  }
+  return `${value}% Master`;
 }
 
 function bindAnalysisWorker() {
@@ -820,6 +1057,9 @@ function describeCrossfader(value) {
 async function start() {
   await init();
   state.mixer = new Mixer();
+  state.monitor = new MonitorMixer();
+  state.outputRouter = new AudioOutputRouter();
+  installMonitoringUi();
 
   state.decks.set(
     "a",
@@ -840,8 +1080,10 @@ async function start() {
 
   bindAnalysisWorker();
   bindCrossfader();
+  bindMonitoring();
   refreshSyncButtons();
   applyMixerGains();
+  applyMonitoringGains();
 }
 
 start().catch((error) => {
@@ -852,7 +1094,10 @@ start().catch((error) => {
 
 window.addEventListener("beforeunload", () => {
   state.analysisWorker?.terminate();
+  state.outputRouter?.destroy();
   state.decodeContext?.close();
+  state.audioContext?.close();
+  state.monitor?.free();
   for (const deck of state.decks.values()) {
     deck.destroy();
   }
