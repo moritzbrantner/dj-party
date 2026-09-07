@@ -2,7 +2,7 @@ use audio_analysis_processing::operations::playback::{
     TempoRange, effective_bpm as shared_effective_bpm, equal_power_crossfade_gains,
     plan_beat_loop as shared_plan_beat_loop, plan_bpm_sync,
     playback_rate_for_tempo as shared_playback_rate_for_tempo,
-    tempo_percent_for_rate as shared_tempo_percent_for_rate,
+    tempo_percent_for_rate as shared_tempo_percent_for_rate, valid_beat_grid,
     waveform_extrema as shared_waveform_extrema,
 };
 use audio_analysis_rhythm::track::{TrackRhythmConfig, analyze_rhythm_track};
