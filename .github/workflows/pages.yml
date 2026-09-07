@@ -41,9 +41,12 @@ jobs:
 
       - name: Check browser JavaScript syntax
         run: |
-          for file in web/app.js web/analysis-worker.js web/performance.js web/output-routing.js; do
+          for file in web/app.js web/mixer-app.js web/library.js web/analysis-worker.js web/performance.js web/output-routing.js; do
             node --input-type=module --check < "$file"
           done
+
+      - name: Test browser-local track library helpers
+        run: node --test web/library.test.mjs
 
       - name: Install wasm-pack
         run: cargo install wasm-pack --version 0.13.1 --locked
@@ -85,19 +88,30 @@ jobs:
               assert target.is_file() and target.stat().st_size > 0, f"missing local asset: {raw}"
 
           app = (root / "app.js").read_text()
+          mixer = (root / "mixer-app.js").read_text()
+          library = (root / "library.js").read_text()
           worker = (root / "analysis-worker.js").read_text()
           performance = (root / "performance.js").read_text()
           routing = (root / "output-routing.js").read_text()
-          assert './pkg/dj_party.js' in app, "browser adapter does not reference generated WASM package"
+          assert './library.js' in app, "browser bootstrap does not install the local track library"
+          assert './mixer-app.js' in app, "browser bootstrap does not start the mixer adapter"
+          assert './pkg/dj_party.js' in mixer, "mixer adapter does not reference generated WASM package"
           assert './pkg/dj_party.js' in worker, "analysis worker does not reference generated WASM package"
           assert './pkg/dj_party.js' in performance, "performance transport does not reference generated WASM package"
-          assert './performance.js' in app, "browser adapter does not reference performance transport"
-          assert './output-routing.js' in app, "browser adapter does not reference output-routing adapter"
-          assert './monitoring.css' in app, "browser adapter does not reference monitoring styles"
-          assert 'analysis-worker.js' in app, "browser adapter does not start the analysis worker"
-          assert 'MonitorMixer' in app, "browser adapter does not use Rust-owned monitor semantics"
+          assert './performance.js' in mixer, "mixer adapter does not reference performance transport"
+          assert './output-routing.js' in mixer, "mixer adapter does not reference output-routing adapter"
+          assert './monitoring.css' in mixer, "mixer adapter does not reference monitoring styles"
+          assert 'analysis-worker.js' in mixer, "mixer adapter does not start the analysis worker"
+          assert 'MonitorMixer' in mixer, "mixer adapter does not use Rust-owned monitor semantics"
+          assert 'indexedDB' in library, "track library does not use browser-local IndexedDB storage"
+          assert 'multiple' in library and 'webkitdirectory' in library, "track library does not expose batch and folder import"
+          assert 'DataTransfer' in library, "saved tracks cannot be handed back to the existing deck file path"
+          assert './library.css' in library, "track library does not reference its local stylesheet"
           assert 'selectAudioOutput' in routing and 'setSinkId' in routing, "output-routing adapter does not own browser sink selection"
           assert 'phase-sync' in html_path.read_text(), "phase-sync controls missing from Pages HTML"
+          assert (root / "library.css").is_file(), "missing track-library stylesheet"
+          assert (root / "mixer-app.js").is_file(), "missing mixer browser adapter"
+          assert (root / "library.js").is_file(), "missing browser-local track library"
           assert (root / "monitoring.css").is_file(), "missing monitoring stylesheet"
           assert (root / "output-routing.js").is_file(), "missing output-routing adapter"
           assert (root / "pkg" / "dj_party.js").is_file(), "missing generated WASM JavaScript"
