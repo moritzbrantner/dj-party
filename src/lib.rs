@@ -218,12 +218,8 @@ pub fn effective_bpm(base_bpm: f64, playback_rate: f64) -> f64 {
 
 #[wasm_bindgen]
 pub fn plan_sync(source_bpm: f64, target_bpm: f64, target_playback_rate: f64) -> SyncPlan {
-    let Some(plan) = plan_bpm_sync(
-        source_bpm,
-        target_bpm,
-        target_playback_rate,
-        DJ_TEMPO_RANGE,
-    ) else {
+    let Some(plan) = plan_bpm_sync(source_bpm, target_bpm, target_playback_rate, DJ_TEMPO_RANGE)
+    else {
         return invalid_sync_plan();
     };
 
@@ -247,7 +243,8 @@ pub fn plan_beat_loop(
         return invalid_beat_loop(beat_count);
     }
 
-    let Some(plan) = shared_plan_beat_loop(beats, current_seconds, beat_count, duration_seconds) else {
+    let Some(plan) = shared_plan_beat_loop(beats, current_seconds, beat_count, duration_seconds)
+    else {
         return invalid_beat_loop(beat_count);
     };
 
