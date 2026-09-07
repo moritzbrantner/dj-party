@@ -3,7 +3,9 @@ use std::f64::consts::FRAC_PI_2;
 use audio_analysis_rhythm::track::{TrackRhythmConfig, analyze_rhythm_track};
 use wasm_bindgen::prelude::*;
 
+mod monitoring;
 mod transport;
+pub use monitoring::*;
 pub use transport::*;
 
 const MIN_CROSSFADER: f64 = -1.0;
