@@ -21,10 +21,13 @@ wasm-pack build "$ROOT_DIR" \
 
 cp "$ROOT_DIR/web/index.html" "$OUTPUT_DIR/index.html"
 cp "$ROOT_DIR/web/app.js" "$OUTPUT_DIR/app.js"
+cp "$ROOT_DIR/web/mixer-app.js" "$OUTPUT_DIR/mixer-app.js"
+cp "$ROOT_DIR/web/library.js" "$OUTPUT_DIR/library.js"
 cp "$ROOT_DIR/web/analysis-worker.js" "$OUTPUT_DIR/analysis-worker.js"
 cp "$ROOT_DIR/web/performance.js" "$OUTPUT_DIR/performance.js"
 cp "$ROOT_DIR/web/output-routing.js" "$OUTPUT_DIR/output-routing.js"
 cp "$ROOT_DIR/web/styles.css" "$OUTPUT_DIR/styles.css"
+cp "$ROOT_DIR/web/library.css" "$OUTPUT_DIR/library.css"
 cp "$ROOT_DIR/web/analysis.css" "$OUTPUT_DIR/analysis.css"
 cp "$ROOT_DIR/web/monitoring.css" "$OUTPUT_DIR/monitoring.css"
 touch "$OUTPUT_DIR/.nojekyll"
@@ -32,10 +35,13 @@ touch "$OUTPUT_DIR/.nojekyll"
 for required in \
   "$OUTPUT_DIR/index.html" \
   "$OUTPUT_DIR/app.js" \
+  "$OUTPUT_DIR/mixer-app.js" \
+  "$OUTPUT_DIR/library.js" \
   "$OUTPUT_DIR/analysis-worker.js" \
   "$OUTPUT_DIR/performance.js" \
   "$OUTPUT_DIR/output-routing.js" \
   "$OUTPUT_DIR/styles.css" \
+  "$OUTPUT_DIR/library.css" \
   "$OUTPUT_DIR/analysis.css" \
   "$OUTPUT_DIR/monitoring.css" \
   "$OUTPUT_DIR/pkg/dj_party.js" \

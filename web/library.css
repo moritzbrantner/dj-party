@@ -1,0 +1,245 @@
+.music-library {
+  margin-bottom: 18px;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 20px;
+  background: rgb(16 16 20 / 94%);
+  box-shadow: 0 18px 52px rgb(0 0 0 / 22%);
+}
+
+.library-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 24px;
+  padding: 20px 22px 16px;
+}
+
+.library-eyebrow {
+  margin: 0 0 5px;
+  color: var(--accent-mix);
+  font-size: 0.7rem;
+  font-weight: 760;
+  letter-spacing: 0.13em;
+  text-transform: uppercase;
+}
+
+.library-heading h2 {
+  margin: 0;
+  color: var(--text);
+  font-size: clamp(1.05rem, 1.8vw, 1.3rem);
+  letter-spacing: -0.02em;
+}
+
+.library-description {
+  max-width: 720px;
+  margin: 6px 0 0;
+  color: var(--muted);
+  font-size: 0.8rem;
+  line-height: 1.45;
+}
+
+.library-import-actions,
+.library-track-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.library-import-actions {
+  justify-content: flex-end;
+}
+
+.library-file-input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+.library-button {
+  display: inline-flex;
+  min-height: 34px;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid #393943;
+  border-radius: 9px;
+  background: #1a1a20;
+  padding: 7px 10px;
+  color: #e8e8eb;
+  cursor: pointer;
+  font-size: 0.74rem;
+  font-weight: 680;
+  text-decoration: none;
+  transition:
+    border-color 120ms ease,
+    background 120ms ease,
+    transform 120ms ease;
+}
+
+.library-button:hover {
+  border-color: #565663;
+  background: #222229;
+}
+
+.library-button:active {
+  transform: translateY(1px);
+}
+
+.library-button-primary {
+  border-color: rgb(199 255 94 / 48%);
+  background: rgb(199 255 94 / 10%);
+}
+
+.library-file-input:focus-visible + .library-button,
+.library-button:focus-visible,
+.library-search-label input:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 3px;
+}
+
+.library-import-surface {
+  border-top: 1px solid var(--line);
+  padding: 14px 22px 16px;
+  transition: background 120ms ease;
+}
+
+.library-import-surface.is-dragging {
+  background: rgb(199 255 94 / 6%);
+}
+
+.library-toolbar {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 18px;
+  margin-bottom: 10px;
+}
+
+.library-search-label {
+  display: grid;
+  width: min(420px, 100%);
+  gap: 5px;
+  color: var(--muted);
+  font-size: 0.7rem;
+  font-weight: 650;
+}
+
+.library-search-label input {
+  width: 100%;
+  min-height: 36px;
+  border: 1px solid #34343d;
+  border-radius: 9px;
+  background: #15151a;
+  padding: 7px 10px;
+  color: var(--text);
+}
+
+.library-search-label input::placeholder {
+  color: #6f6f79;
+}
+
+.library-status {
+  color: var(--muted);
+  font-size: 0.72rem;
+  text-align: right;
+}
+
+.library-track-list {
+  display: grid;
+  max-height: 270px;
+  overflow: auto;
+  border: 1px solid #292932;
+  border-radius: 12px;
+  background: #0f0f13;
+}
+
+.library-track {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 16px;
+  min-width: 0;
+  padding: 10px 11px 10px 13px;
+}
+
+.library-track + .library-track {
+  border-top: 1px solid #26262e;
+}
+
+.library-track-identity {
+  min-width: 0;
+}
+
+.library-track-title,
+.library-track-meta {
+  display: block;
+}
+
+.library-track-title {
+  overflow: hidden;
+  color: #efeff2;
+  font-size: 0.84rem;
+  font-weight: 680;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.library-track-meta {
+  margin-top: 3px;
+  color: #777782;
+  font-size: 0.68rem;
+}
+
+.library-load-a {
+  border-color: rgb(88 214 255 / 34%);
+}
+
+.library-load-b {
+  border-color: rgb(255 108 174 / 34%);
+}
+
+.library-remove {
+  color: #aaaab3;
+}
+
+.library-empty {
+  margin: 0;
+  padding: 20px 14px;
+  color: #777782;
+  font-size: 0.78rem;
+  text-align: center;
+}
+
+.library-drop-hint {
+  margin: 9px 1px 0;
+  color: #666671;
+  font-size: 0.68rem;
+}
+
+@media (max-width: 760px) {
+  .library-heading,
+  .library-toolbar {
+    display: grid;
+  }
+
+  .library-import-actions {
+    justify-content: flex-start;
+  }
+
+  .library-status {
+    text-align: left;
+  }
+
+  .library-track {
+    grid-template-columns: 1fr;
+    gap: 9px;
+  }
+
+  .library-track-actions {
+    justify-content: flex-start;
+  }
+}

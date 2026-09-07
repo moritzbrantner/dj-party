@@ -6,7 +6,10 @@ DJ Party is a browser-first DJ mixing experiment with a Rust core. The long-term
 
 The app can:
 
-- load local audio files into two independent decks;
+- import many local audio files at once, including folder selection where the browser exposes it;
+- keep an idempotent browser-local music collection in IndexedDB so previously imported tracks can be picked again on later visits;
+- search that collection and load any saved track into Deck A or Deck B without re-selecting the original file;
+- load local audio files directly into two independent decks;
 - drag and drop MP3 and other browser-supported audio files;
 - play, pause, restart, seek, and control deck level;
 - mix decks with a Rust-owned equal-power crossfader;
@@ -22,19 +25,21 @@ The app can:
 - route either deck pre-fader to a separate headphone output when the browser exposes secure audio-output selection;
 - blend the cued decks with the post-fader master in the headphone monitor using a Rust-owned equal-power Cue ↔ Master control.
 
-Selected tracks, decoded PCM, timing state, cue points, loops, analysis results, and monitor state stay on the device. Nothing is uploaded by the current app.
+Imported library blobs, selected tracks, decoded PCM, timing state, cue points, loops, analysis results, and monitor state stay on the device. Nothing is uploaded by the current app. The saved music collection is subject to the browser's site-storage quota and can disappear if site data is cleared.
 
 ## Architecture
 
-Rust/WASM is authoritative for deterministic mixer state, gain calculations, tempo/rate mapping, BPM sync planning, beat/bar position, phase-sync planning, hot-cue quantization, beat jumps, beat-loop boundaries, and headphone-monitor gain semantics.
+DJ Party's Rust/WASM layer is authoritative for deterministic mixer state and product policy: tempo range, effective-BPM/BPM-sync surface, beat/bar and phase-sync behavior, hot-cue and beat-jump semantics, beat-loop policy, and headphone-monitor semantics. Reusable policy-neutral audio/DJ calculations such as equal-power crossfade gains, tempo/rate conversion, tempo-only BPM-sync math, generic beat-loop selection, and waveform extrema come from the pinned `audio-analysis` processing crates and are consumed rather than reimplemented here.
 
-The browser layer owns browser-only capabilities: local file selection and decoding, object URLs, `AudioContext`, media-element playback, pitch-preservation/key-lock behavior, DOM rendering, workers, physical audio-output selection, and applying the seek/rate/gain plans returned by Rust.
+The browser layer owns browser-only capabilities: local file and folder selection, browser-local IndexedDB track storage, object URLs, audio decoding, `AudioContext`, media-element playback, pitch-preservation/key-lock behavior, DOM rendering, workers, physical audio-output selection, and applying the seek/rate/gain plans returned by Rust.
+
+The local library deliberately reuses the existing deck file-input path when a saved track is loaded. It does not duplicate deck reset, analysis, transport, or mixer semantics. Re-importing the same file identity is idempotent and does not create a duplicate collection row.
 
 Headphone cueing is deliberately pre-fader: the selected deck cue branches bypass the deck level and crossfader, while the optional Master contribution follows the same Rust-owned post-fader deck gains heard on the main output. If the browser cannot select a separate audio output, the headphone controls stay disabled and the existing master playback route is unchanged.
 
 Reusable ownership remains explicit:
 
-- BPM, beat-grid, downbeat, and related rhythm analysis comes from `audio-analysis` rather than being reimplemented here;
+- BPM, beat-grid, downbeat, related rhythm analysis, and reusable policy-neutral playback/DJ calculations come from `audio-analysis` rather than being reimplemented here;
 - collaborative lobby/signaling should integrate through `multiplayer-setup-service` rather than becoming part of the mixer core.
 
 ## Build and validate
@@ -45,6 +50,7 @@ Requirements: Rust 1.95.0, the `wasm32-unknown-unknown` target, and `wasm-pack` 
 cargo fmt --all --check
 cargo clippy --all-targets --all-features -- -D warnings
 cargo test --all-features
+node --test web/library.test.mjs
 cargo install wasm-pack --version 0.13.1 --locked
 bash scripts/build-pages.sh
 ```
@@ -58,7 +64,9 @@ The generated static site is written to `_site/` and can be served by any local 
 3. Reusable BPM/beat-grid analysis — done
 4. Tempo, beat loops, and BPM sync — done
 5. Phase sync, quantized hot cues, and beat-jump transport — done
-6. Headphone cue/master routing where browser APIs allow it — current slice
-7. Mixer EQ/filter controls with deterministic parameter semantics
-8. Multiplayer sessions through `multiplayer-setup-service`
-9. Shared-session authority, synchronization, optional asset transfer, and collaborative mixing
+6. Headphone cue/master routing where browser APIs allow it — done
+7. Browser-local multi-file/folder music collection — current slice
+8. Mixer EQ/filter controls with deterministic parameter semantics
+9. ZIP/playlist library import plus reusable cached track-analysis metadata
+10. Multiplayer sessions through `multiplayer-setup-service`
+11. Shared-session authority, synchronization, optional asset transfer, and collaborative mixing
