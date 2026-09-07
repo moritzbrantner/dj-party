@@ -12,8 +12,8 @@ crate-type = ["cdylib", "rlib"]
 
 [dependencies]
 wasm-bindgen = "0.2"
-audio-analysis-processing = { package = "moenarch-audio-analysis-processing", git = "https://github.com/moritzbrantner/audio-analysis.git", rev = "c37be625b597b1a33ff7b897468b0f07ae980453" }
-audio-analysis-rhythm = { package = "moenarch-audio-analysis-rhythm", git = "https://github.com/moritzbrantner/audio-analysis.git", rev = "c37be625b597b1a33ff7b897468b0f07ae980453" }
+audio-analysis-processing = { package = "moenarch-audio-analysis-processing", git = "https://github.com/moritzbrantner/audio-analysis.git", rev = "3882c29c10ef1578d415d21434bd2e65619418bb" }
+audio-analysis-rhythm = { package = "moenarch-audio-analysis-rhythm", git = "https://github.com/moritzbrantner/audio-analysis.git", rev = "3882c29c10ef1578d415d21434bd2e65619418bb" }
 
 [package.metadata.wasm-pack.profile.release]
 wasm-opt = false
