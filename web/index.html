@@ -19,7 +19,7 @@
             <span class="brand-mark" aria-hidden="true">◉</span>
             <span>DJ Party</span>
           </a>
-          <p class="tagline">Two decks. Local tracks. Rust timing and analysis in the mix.</p>
+          <p class="tagline">Two decks. Local tracks. Rust transport and analysis in the mix.</p>
         </div>
         <div class="session-status" aria-label="Session status">
           <span class="status-dot" aria-hidden="true"></span>
@@ -74,7 +74,7 @@
               class="waveform"
               width="720"
               height="124"
-              aria-label="Deck A waveform, beat grid, loop, cue point, and playhead"
+              aria-label="Deck A waveform, beat grid, loop, cue points, and playhead"
             ></canvas>
           </div>
           <div class="cue-row">
@@ -109,9 +109,26 @@
                 <span>Key lock</span>
               </label>
               <output id="deck-a-effective-bpm" class="effective-bpm">— BPM</output>
-              <button id="deck-a-sync" class="mini-button sync-button" type="button" disabled>Sync</button>
+              <button id="deck-a-sync" class="mini-button sync-button" type="button" disabled>BPM Sync</button>
+              <button id="deck-a-phase-sync" class="mini-button phase-sync-button" type="button" disabled>Phase Sync</button>
             </div>
             <div class="timing-status" id="deck-a-timing-status" aria-live="polite">Waiting for BPM analysis</div>
+            <output id="deck-a-beat-position" class="beat-position" aria-live="polite">Bar — · Beat — · Phase —</output>
+
+            <div class="hot-cue-control performance-control">
+              <div class="timing-heading">
+                <span>Hot cues</span>
+                <output id="deck-a-hot-cue-status">Beat grid required</output>
+              </div>
+              <div id="deck-a-hot-cue-controls" class="hot-cue-buttons" role="group" aria-label="Deck A hot cues">
+                <button class="mini-button hot-cue-button" type="button" data-hot-cue="1" disabled>1</button>
+                <button class="mini-button hot-cue-button" type="button" data-hot-cue="2" disabled>2</button>
+                <button class="mini-button hot-cue-button" type="button" data-hot-cue="3" disabled>3</button>
+                <button class="mini-button hot-cue-button" type="button" data-hot-cue="4" disabled>4</button>
+                <button id="deck-a-hot-cues-clear" class="mini-button" type="button" disabled>Clear</button>
+              </div>
+            </div>
+
             <div class="loop-control">
               <div class="timing-heading">
                 <span>Beat loop</span>
@@ -123,6 +140,19 @@
                 <button class="mini-button" type="button" data-loop-beats="4" disabled>4</button>
                 <button class="mini-button" type="button" data-loop-beats="8" disabled>8</button>
                 <button id="deck-a-loop-off" class="mini-button loop-off-button" type="button" disabled>Off</button>
+              </div>
+            </div>
+
+            <div class="beat-jump-control performance-control">
+              <div class="timing-heading">
+                <span>Beat jump</span>
+                <output id="deck-a-beat-jump-status">Beat grid required</output>
+              </div>
+              <div id="deck-a-beat-jump-controls" class="beat-jump-buttons" role="group" aria-label="Deck A beat jumps">
+                <button class="mini-button" type="button" data-beat-jump="-8" disabled>−8</button>
+                <button class="mini-button" type="button" data-beat-jump="-4" disabled>−4</button>
+                <button class="mini-button" type="button" data-beat-jump="4" disabled>+4</button>
+                <button class="mini-button" type="button" data-beat-jump="8" disabled>+8</button>
               </div>
             </div>
           </section>
@@ -184,8 +214,8 @@
           </div>
 
           <p class="engine-note">
-            Rust/WASM owns equal-power mixing, tempo mapping, sync-rate limits, cue semantics, beat-loop boundaries,
-            and rhythm analysis. The browser applies Web Audio playback and key-lock behavior.
+            Rust/WASM owns equal-power mixing, tempo and phase-sync planning, cue quantization, beat jumps,
+            beat-loop boundaries, and rhythm analysis. The browser applies Web Audio playback and key-lock behavior.
           </p>
         </section>
 
@@ -235,7 +265,7 @@
               class="waveform"
               width="720"
               height="124"
-              aria-label="Deck B waveform, beat grid, loop, cue point, and playhead"
+              aria-label="Deck B waveform, beat grid, loop, cue points, and playhead"
             ></canvas>
           </div>
           <div class="cue-row">
@@ -270,9 +300,26 @@
                 <span>Key lock</span>
               </label>
               <output id="deck-b-effective-bpm" class="effective-bpm">— BPM</output>
-              <button id="deck-b-sync" class="mini-button sync-button" type="button" disabled>Sync</button>
+              <button id="deck-b-sync" class="mini-button sync-button" type="button" disabled>BPM Sync</button>
+              <button id="deck-b-phase-sync" class="mini-button phase-sync-button" type="button" disabled>Phase Sync</button>
             </div>
             <div class="timing-status" id="deck-b-timing-status" aria-live="polite">Waiting for BPM analysis</div>
+            <output id="deck-b-beat-position" class="beat-position" aria-live="polite">Bar — · Beat — · Phase —</output>
+
+            <div class="hot-cue-control performance-control">
+              <div class="timing-heading">
+                <span>Hot cues</span>
+                <output id="deck-b-hot-cue-status">Beat grid required</output>
+              </div>
+              <div id="deck-b-hot-cue-controls" class="hot-cue-buttons" role="group" aria-label="Deck B hot cues">
+                <button class="mini-button hot-cue-button" type="button" data-hot-cue="1" disabled>1</button>
+                <button class="mini-button hot-cue-button" type="button" data-hot-cue="2" disabled>2</button>
+                <button class="mini-button hot-cue-button" type="button" data-hot-cue="3" disabled>3</button>
+                <button class="mini-button hot-cue-button" type="button" data-hot-cue="4" disabled>4</button>
+                <button id="deck-b-hot-cues-clear" class="mini-button" type="button" disabled>Clear</button>
+              </div>
+            </div>
+
             <div class="loop-control">
               <div class="timing-heading">
                 <span>Beat loop</span>
@@ -284,6 +331,19 @@
                 <button class="mini-button" type="button" data-loop-beats="4" disabled>4</button>
                 <button class="mini-button" type="button" data-loop-beats="8" disabled>8</button>
                 <button id="deck-b-loop-off" class="mini-button loop-off-button" type="button" disabled>Off</button>
+              </div>
+            </div>
+
+            <div class="beat-jump-control performance-control">
+              <div class="timing-heading">
+                <span>Beat jump</span>
+                <output id="deck-b-beat-jump-status">Beat grid required</output>
+              </div>
+              <div id="deck-b-beat-jump-controls" class="beat-jump-buttons" role="group" aria-label="Deck B beat jumps">
+                <button class="mini-button" type="button" data-beat-jump="-8" disabled>−8</button>
+                <button class="mini-button" type="button" data-beat-jump="-4" disabled>−4</button>
+                <button class="mini-button" type="button" data-beat-jump="4" disabled>+4</button>
+                <button class="mini-button" type="button" data-beat-jump="8" disabled>+8</button>
               </div>
             </div>
           </section>

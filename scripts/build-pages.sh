@@ -22,6 +22,7 @@ wasm-pack build "$ROOT_DIR" \
 cp "$ROOT_DIR/web/index.html" "$OUTPUT_DIR/index.html"
 cp "$ROOT_DIR/web/app.js" "$OUTPUT_DIR/app.js"
 cp "$ROOT_DIR/web/analysis-worker.js" "$OUTPUT_DIR/analysis-worker.js"
+cp "$ROOT_DIR/web/performance.js" "$OUTPUT_DIR/performance.js"
 cp "$ROOT_DIR/web/styles.css" "$OUTPUT_DIR/styles.css"
 cp "$ROOT_DIR/web/analysis.css" "$OUTPUT_DIR/analysis.css"
 touch "$OUTPUT_DIR/.nojekyll"
@@ -30,6 +31,7 @@ for required in \
   "$OUTPUT_DIR/index.html" \
   "$OUTPUT_DIR/app.js" \
   "$OUTPUT_DIR/analysis-worker.js" \
+  "$OUTPUT_DIR/performance.js" \
   "$OUTPUT_DIR/styles.css" \
   "$OUTPUT_DIR/analysis.css" \
   "$OUTPUT_DIR/pkg/dj_party.js" \

@@ -6,23 +6,25 @@ DJ Party is a browser-first DJ application with a Rust core. The long-term direc
 
 ## Ownership boundaries
 
-- Rust is authoritative for deterministic mixer state, mix calculations, tempo/rate mapping, sync-rate planning, cue semantics, beat-loop boundary selection, waveform reduction, and reusable audio analysis.
-- The browser adapter owns browser-only capabilities: local file selection/decoding, object URLs, Web Audio/media-element playback, `preservesPitch` key-lock behavior, worker orchestration, DOM/canvas rendering, and interaction wiring.
-- Do not duplicate Rust mixer, tempo, sync, loop-selection, BPM, rhythm, or Fourier formulas in JavaScript.
-- Local tracks and decoded PCM must stay local unless a future feature explicitly introduces user-approved transfer or sharing.
-- Multiplayer is not part of the local DJ slices. When introduced, keep signaling/session setup behind a narrow adapter to `multiplayer-setup-service`.
-- Audio analysis must reuse suitable `audio-analysis` Rust/WASM surfaces instead of creating parallel BPM, rhythm, Fourier, or related implementations here.
-- Sync is currently tempo synchronization only. Do not claim beat-phase synchronization until a separate authoritative phase-alignment contract is implemented and verified.
+- Rust is authoritative for deterministic mixer state and mix calculations.
+- Rust is authoritative for tempo/rate mapping, effective BPM, BPM-sync planning, beat/bar position, phase-sync planning, cue quantization, beat jumps, and beat-loop boundaries.
+- The browser adapter owns browser-only capabilities: local file selection and decoding, object URLs, Web Audio nodes, media-element playback, pitch-preservation/key-lock behavior, DOM rendering, workers, and applying Rust-produced transport plans.
+- Do not duplicate Rust mixer or transport formulas in JavaScript.
+- Local tracks, decoded PCM, timing state, cue points, and loops must stay local unless a future feature explicitly introduces user-approved transfer or sharing.
+- Beat-dependent controls must fail closed outside the verified beat-grid horizon; never silently snap to stale analyzed data.
+- `audio-analysis` remains authoritative for BPM, beat-grid, downbeat, Fourier, and related reusable analysis semantics.
+- Multiplayer is not part of the current local mixer slices. When introduced, keep signaling/session setup behind a narrow adapter to `multiplayer-setup-service`.
 
-## Acceptance
+## Browser acceptance
 
-A browser slice is acceptable when all of these hold:
+The browser app is acceptable when all of these hold:
 
 1. `cargo fmt --all --check`
 2. `cargo clippy --all-targets --all-features -- -D warnings`
 3. `cargo test --all-features`
-4. Browser JavaScript modules pass syntax validation.
+4. browser-module syntax validation passes for `web/app.js`, `web/analysis-worker.js`, and `web/performance.js`
 5. `bash scripts/build-pages.sh`
-6. The built Pages artifact contains the generated Rust/WASM package, analysis worker, and all local browser assets.
+6. the built Pages artifact contains the generated Rust/WASM package and all local browser modules/assets
+7. BPM Sync remains tempo-only while Phase Sync explicitly owns the transport seek needed for phase alignment
 
 Do not weaken these checks to make a change mergeable.

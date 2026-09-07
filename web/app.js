@@ -1,3 +1,4 @@
+import { PerformanceControls } from "./performance.js";
 import init, {
   CuePoint,
   Mixer,
@@ -64,6 +65,10 @@ class Deck {
     this.loopButtons = [...this.loopControls.querySelectorAll("[data-loop-beats]")];
     this.loopOffButton = document.querySelector(`#deck-${id}-loop-off`);
     this.loopStatus = document.querySelector(`#deck-${id}-loop-status`);
+    this.performance = new PerformanceControls(
+      this,
+      () => state.decks.get(this.id === "a" ? "b" : "a"),
+    );
 
     setPitchPreservation(this.audio, true);
     this.resizeObserver = new ResizeObserver(() => this.drawWaveform());
@@ -252,6 +257,7 @@ class Deck {
     this.baseBpm = null;
     this.cue.clear();
     this.disableLoop();
+    this.performance.reset();
 
     if (this.objectUrl) {
       URL.revokeObjectURL(this.objectUrl);
@@ -338,6 +344,7 @@ class Deck {
 
     this.updateTimingReadout();
     this.updateLoopAvailability();
+    this.performance.refreshAvailability();
     refreshSyncButtons();
     this.drawWaveform();
   }
@@ -353,6 +360,7 @@ class Deck {
     this.timingStatus.textContent = "Timing controls need analysis";
     this.updateTimingReadout();
     this.updateLoopAvailability();
+    this.performance.refreshAvailability();
     refreshSyncButtons();
   }
 
@@ -418,8 +426,8 @@ class Deck {
 
       this.setPlaybackRate(plan.playback_rate());
       this.timingStatus.textContent = plan.limited()
-        ? `Closest match · target ${plan.target_bpm().toFixed(1)} BPM`
-        : `Synced to Deck ${otherDeck.id.toUpperCase()} · ${plan.target_bpm().toFixed(1)} BPM`;
+        ? `Closest BPM match · target ${plan.target_bpm().toFixed(1)} BPM`
+        : `BPM synced to Deck ${otherDeck.id.toUpperCase()} · ${plan.target_bpm().toFixed(1)} BPM`;
     } finally {
       plan.free();
     }
@@ -525,6 +533,7 @@ class Deck {
 
   updateProgress() {
     this.current.textContent = formatTime(this.audio.currentTime);
+    this.performance.updatePositionReadout();
 
     if (!Number.isFinite(this.audio.duration) || this.audio.duration <= 0) {
       this.seek.value = "0";
@@ -626,6 +635,8 @@ class Deck {
       context.globalAlpha = 1;
     }
 
+    this.performance.drawMarkers(context, width, height, duration, accent);
+
     if (duration > 0 && this.cue.has_cue()) {
       const cueX = (this.cue.seconds() / duration) * width;
       context.strokeStyle = mixAccent;
@@ -650,6 +661,7 @@ class Deck {
   destroy() {
     this.stopPlaybackAnimation();
     this.resizeObserver.disconnect();
+    this.performance.destroy();
     this.cue.free();
     if (this.objectUrl) {
       URL.revokeObjectURL(this.objectUrl);
@@ -755,6 +767,8 @@ function refreshSyncButtons() {
   const ready = deckA.baseBpm !== null && deckB.baseBpm !== null;
   deckA.syncButton.disabled = !ready;
   deckB.syncButton.disabled = !ready;
+  deckA.performance.refreshAvailability();
+  deckB.performance.refreshAvailability();
 }
 
 function bindCrossfader() {
@@ -790,6 +804,7 @@ function bindAnalysisWorker() {
     for (const deck of state.decks.values()) {
       deck.analysisStatus.textContent = "Analysis worker unavailable";
       deck.timingStatus.textContent = "Timing controls need analysis";
+      deck.performance.refreshAvailability();
     }
   });
 }

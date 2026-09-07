@@ -122,7 +122,8 @@
 }
 
 .tempo-control,
-.loop-control {
+.loop-control,
+.performance-control {
   min-width: 0;
 }
 
@@ -144,14 +145,19 @@
 .timing-heading output,
 .effective-bpm,
 .timing-status,
+.beat-position,
 .tempo-scale {
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
 }
 
 .timing-heading output {
+  overflow: hidden;
   color: var(--muted);
-  font-size: 0.69rem;
+  font-size: 0.65rem;
   font-weight: 550;
+  text-align: right;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .tempo-slider {
@@ -203,6 +209,12 @@
   color: var(--accent-mix);
 }
 
+.phase-sync-button:not(:disabled) {
+  border-color: rgb(199 255 94 / 55%);
+  background: rgb(199 255 94 / 7%);
+  color: var(--accent-mix);
+}
+
 .timing-status {
   min-height: 1.3em;
   color: #858590;
@@ -210,19 +222,40 @@
   line-height: 1.35;
 }
 
-.loop-control {
+.beat-position {
+  display: block;
+  min-height: 1.4em;
+  border-radius: 8px;
+  background: #0b0b0f;
+  padding: 7px 9px;
+  color: #b9b9c2;
+  font-size: 0.66rem;
+}
+
+.loop-control,
+.performance-control {
   border-top: 1px solid #27272f;
   padding-top: 11px;
 }
 
-.loop-buttons {
+.loop-buttons,
+.hot-cue-buttons {
   display: grid;
   grid-template-columns: repeat(5, minmax(0, 1fr));
   gap: 6px;
   margin-top: 8px;
 }
 
-.loop-buttons .mini-button {
+.beat-jump-buttons {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.loop-buttons .mini-button,
+.hot-cue-buttons .mini-button,
+.beat-jump-buttons .mini-button {
   min-width: 0;
   padding: 0 6px;
 }
@@ -231,6 +264,19 @@
   border-color: rgb(199 255 94 / 55%);
   background: rgb(199 255 94 / 10%);
   color: var(--accent-mix);
+}
+
+.hot-cue-button.is-set {
+  border-color: currentColor;
+  background: rgb(255 255 255 / 6%);
+}
+
+.deck-a .hot-cue-button.is-set {
+  color: var(--accent-a);
+}
+
+.deck-b .hot-cue-button.is-set {
+  color: var(--accent-b);
 }
 
 .loop-off-button:not(:disabled) {
@@ -268,5 +314,16 @@
 
   .effective-bpm {
     margin-left: auto;
+  }
+
+  .timing-heading {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 3px;
+  }
+
+  .timing-heading output {
+    max-width: 100%;
+    text-align: left;
   }
 }
