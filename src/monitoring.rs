@@ -84,7 +84,7 @@ impl MonitorMixer {
             return 0.0;
         }
 
-        let selected = usize::from(self.deck_a_cue) + usize::from(self.deck_b_cue);
+        let selected = self.deck_a_cue as usize + self.deck_b_cue as usize;
         if selected == 0 {
             return 0.0;
         }
