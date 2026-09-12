@@ -8,6 +8,7 @@ import {
   MULTIPLAYER_TURN_MODULE_URL,
   DjPartyMultiplayerSession,
   isDjPartySessionHello,
+  loadMultiplayerClientModules,
   multiplayerApiFromLocation,
   multiplayerInviteUrl,
   normalizeLobbyCode,
@@ -31,6 +32,32 @@ test("multiplayer browser helpers are pinned to one exact service commit", () =>
   assert.ok(MULTIPLAYER_TURN_MODULE_URL.endsWith("/web/turn-credentials.js"));
 });
 
+test("optional TURN module loading cannot block the required lobby client", async () => {
+  const imported = [];
+  class RequiredLobbySession extends FakeLobbySession {}
+  const client = await loadMultiplayerClientModules(async (url) => {
+    imported.push(url);
+    if (url === MULTIPLAYER_CLIENT_MODULE_URL) {
+      return { LobbySession: RequiredLobbySession };
+    }
+    throw new Error("optional TURN module unavailable");
+  });
+
+  assert.equal(client.LobbySession, RequiredLobbySession);
+  assert.equal(client.refreshTurnIceServers, null);
+  assert.deepEqual(imported, [MULTIPLAYER_CLIENT_MODULE_URL, MULTIPLAYER_TURN_MODULE_URL]);
+
+  const controller = new DjPartyMultiplayerSession({
+    apiBase: "https://multi.example.com",
+    loadClient: async () => client,
+  });
+  await controller.host(2);
+  await Promise.resolve();
+  assert.equal(controller.snapshot().state, "connected");
+  assert.equal(controller.snapshot().turnAvailable, false);
+  controller.close();
+});
+
 test("service URL normalization allows HTTPS and local HTTP only on HTTP pages", () => {
   assert.equal(normalizeMultiplayerApiBase("https://multi.example.com/path"), "https://multi.example.com");
   assert.equal(
@@ -46,8 +73,9 @@ test("service URL normalization allows HTTPS and local HTTP only on HTTP pages",
   assert.throws(() => normalizeMultiplayerApiBase("file:///tmp/service"), /HTTP or HTTPS/);
 });
 
-test("local pages default to the local service while hosted pages fail closed without configuration", () => {
+test("local HTTP pages default to the local service while hosted or HTTPS pages fail closed without configuration", () => {
   assert.equal(multiplayerApiFromLocation({ href: "http://127.0.0.1:5173/" }), "http://127.0.0.1:8787");
+  assert.equal(multiplayerApiFromLocation({ href: "https://localhost:5173/" }), "");
   assert.equal(multiplayerApiFromLocation({ href: "https://example.github.io/dj-party/" }), "");
   assert.equal(
     multiplayerApiFromLocation({ href: "https://example.github.io/dj-party/?api=https%3A%2F%2Fmulti.example.com" }),
@@ -143,6 +171,9 @@ test("session adapter delegates setup and TURN fallback to reusable service help
 
   created.emit("reliable", { peerId: "PEER0002", data: { type: "mixer-state", value: 123 } });
   assert.deepEqual(controller.snapshot().compatiblePeerIds, ["PEER0001"]);
+
+  created.emit("peer-statechange", { peerId: "PEER0001", state: "failed" });
+  assert.deepEqual(controller.snapshot().compatiblePeerIds, []);
 
   controller.close();
   assert.equal(created.closed, true);
