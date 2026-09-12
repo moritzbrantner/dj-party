@@ -10,6 +10,7 @@ import {
   parseM3u,
   readBoundedStream,
 } from "./archive-import.js";
+import { playlistIdForSource } from "./library-imports.js";
 
 test("M3U parsing ignores comments and remote URLs while preserving local references", () => {
   const parsed = parseM3u("#EXTM3U\n#EXTINF:1,Track\nMusic\\Track.mp3\n../Encore.mp3\nhttps://example.com/live.mp3\n");
@@ -26,6 +27,17 @@ test("playlist matching prefers exact saved paths and only falls back to unambig
   const result = matchPlaylistReferences(["set-a/track.mp3", "../other.mp3", "missing.mp3"], records);
   assert.deepEqual(result.trackIds, ["one", "two"]);
   assert.deepEqual(result.missing, ["missing.mp3"]);
+});
+
+test("same-named playlists remain distinct when their source paths differ", () => {
+  assert.notEqual(
+    playlistIdForSource("set", "party.zip/warmup/set.m3u"),
+    playlistIdForSource("set", "party.zip/closing/set.m3u"),
+  );
+  assert.equal(
+    playlistIdForSource("set", "party.zip\\warmup\\set.m3u"),
+    playlistIdForSource("set", "party.zip/warmup/set.m3u"),
+  );
 });
 
 test("stored ZIP import verifies entries and resolves parent-relative embedded playlist paths", async () => {
