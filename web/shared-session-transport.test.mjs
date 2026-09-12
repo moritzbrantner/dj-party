@@ -50,13 +50,27 @@ test("bridge exposes compatible peers and delegates reliable sends", () => {
   bridge.addEventListener("peer-compatible", (event) => compatible.push(event.detail.peerId));
   bridge.emitInitialCompatiblePeers();
 
-  bridge.broadcastApplicationReliable({ value: 1 });
+  assert.equal(bridge.broadcastApplicationReliable({ value: 1 }), 2);
   assert.deepEqual(controller.session.sent, [
     { peerId: "A", data: { value: 1 } },
     { peerId: "B", data: { value: 1 } },
   ]);
   assert.throws(() => bridge.sendApplicationReliable("X", {}), /not a verified DJ Party peer/);
   assert.deepEqual(compatible, ["A", "B"]);
+});
+
+test("one vanished peer does not abort a broadcast to remaining compatible peers", () => {
+  const controller = new FakeController();
+  controller.compatiblePeers.add("A");
+  controller.compatiblePeers.add("B");
+  controller.session.failPeers.add("A");
+  const bridge = new MultiplayerSharedTransport(controller);
+  const failures = [];
+  bridge.addEventListener("send-error", (event) => failures.push(event.detail.peerId));
+
+  assert.equal(bridge.broadcastApplicationReliable({ command: 1 }), 1);
+  assert.deepEqual(failures, ["A"]);
+  assert.deepEqual(controller.session.sent, [{ peerId: "B", data: { command: 1 } }]);
 });
 
 class FakeController extends EventTarget {
@@ -84,9 +98,13 @@ class FakeSession extends EventTarget {
   constructor() {
     super();
     this.sent = [];
+    this.failPeers = new Set();
   }
 
   sendReliable(peerId, data) {
+    if (this.failPeers.has(peerId)) {
+      throw new Error(`peer ${peerId} vanished`);
+    }
     this.sent.push({ peerId, data });
   }
 
