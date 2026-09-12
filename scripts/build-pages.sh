@@ -22,6 +22,7 @@ wasm-pack build "$ROOT_DIR" \
 cp "$ROOT_DIR/web/index.html" "$OUTPUT_DIR/index.html"
 cp "$ROOT_DIR/web/app.js" "$OUTPUT_DIR/app.js"
 cp "$ROOT_DIR/web/mixer-app.js" "$OUTPUT_DIR/mixer-app.js"
+cp "$ROOT_DIR/web/multiplayer.js" "$OUTPUT_DIR/multiplayer.js"
 cp "$ROOT_DIR/web/library.js" "$OUTPUT_DIR/library.js"
 cp "$ROOT_DIR/web/library-imports.js" "$OUTPUT_DIR/library-imports.js"
 cp "$ROOT_DIR/web/archive-import.js" "$OUTPUT_DIR/archive-import.js"
@@ -31,6 +32,7 @@ cp "$ROOT_DIR/web/performance.js" "$OUTPUT_DIR/performance.js"
 cp "$ROOT_DIR/web/output-routing.js" "$OUTPUT_DIR/output-routing.js"
 cp "$ROOT_DIR/web/effects.js" "$OUTPUT_DIR/effects.js"
 cp "$ROOT_DIR/web/styles.css" "$OUTPUT_DIR/styles.css"
+cp "$ROOT_DIR/web/multiplayer.css" "$OUTPUT_DIR/multiplayer.css"
 cp "$ROOT_DIR/web/library.css" "$OUTPUT_DIR/library.css"
 cp "$ROOT_DIR/web/library-imports.css" "$OUTPUT_DIR/library-imports.css"
 cp "$ROOT_DIR/web/analysis.css" "$OUTPUT_DIR/analysis.css"
@@ -42,6 +44,7 @@ for required in \
   "$OUTPUT_DIR/index.html" \
   "$OUTPUT_DIR/app.js" \
   "$OUTPUT_DIR/mixer-app.js" \
+  "$OUTPUT_DIR/multiplayer.js" \
   "$OUTPUT_DIR/library.js" \
   "$OUTPUT_DIR/library-imports.js" \
   "$OUTPUT_DIR/archive-import.js" \
@@ -51,6 +54,7 @@ for required in \
   "$OUTPUT_DIR/output-routing.js" \
   "$OUTPUT_DIR/effects.js" \
   "$OUTPUT_DIR/styles.css" \
+  "$OUTPUT_DIR/multiplayer.css" \
   "$OUTPUT_DIR/library.css" \
   "$OUTPUT_DIR/library-imports.css" \
   "$OUTPUT_DIR/analysis.css" \

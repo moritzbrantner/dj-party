@@ -1,0 +1,124 @@
+.multiplayer-session {
+  margin: 0 0 1rem;
+  padding: 0.9rem 1rem;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(7, 12, 22, 0.34);
+}
+
+.multiplayer-heading,
+.multiplayer-controls,
+.multiplayer-live,
+.multiplayer-invite {
+  display: flex;
+  align-items: center;
+}
+
+.multiplayer-heading {
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 0.75rem;
+}
+
+.multiplayer-heading strong,
+.multiplayer-kicker {
+  display: block;
+}
+
+.multiplayer-kicker {
+  margin-bottom: 0.12rem;
+  font-size: 0.68rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  opacity: 0.6;
+}
+
+.multiplayer-status,
+.multiplayer-peer-status {
+  font-size: 0.76rem;
+  opacity: 0.72;
+}
+
+.multiplayer-controls {
+  flex-wrap: wrap;
+  gap: 0.6rem;
+}
+
+.multiplayer-field {
+  display: grid;
+  gap: 0.25rem;
+  min-width: 0;
+  font-size: 0.7rem;
+  opacity: 0.9;
+}
+
+.multiplayer-field > span {
+  opacity: 0.65;
+}
+
+.multiplayer-field input {
+  min-height: 2.15rem;
+  padding: 0.4rem 0.55rem;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 0.45rem;
+  color: inherit;
+  background: rgba(0, 0, 0, 0.22);
+  font: inherit;
+}
+
+.multiplayer-api-field {
+  flex: 1 1 18rem;
+}
+
+.multiplayer-code-field {
+  flex: 0 1 12rem;
+}
+
+.multiplayer-size-field {
+  flex: 0 0 5rem;
+}
+
+.multiplayer-live {
+  justify-content: space-between;
+  gap: 1rem;
+  margin-top: 0.75rem;
+}
+
+.multiplayer-invite {
+  gap: 0.55rem;
+  min-width: 0;
+  font-size: 0.76rem;
+}
+
+.multiplayer-invite > span {
+  opacity: 0.58;
+}
+
+.multiplayer-invite output {
+  max-width: 18rem;
+  overflow: hidden;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.multiplayer-note {
+  margin: 0.65rem 0 0;
+  font-size: 0.7rem;
+  line-height: 1.4;
+  opacity: 0.56;
+}
+
+@media (max-width: 720px) {
+  .multiplayer-heading,
+  .multiplayer-live {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .multiplayer-api-field,
+  .multiplayer-code-field {
+    flex-basis: 100%;
+    width: 100%;
+  }
+}

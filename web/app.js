@@ -1,5 +1,6 @@
 import { installLibraryImports } from "./library-imports.js";
 import { installTrackLibrary } from "./library.js";
+import { installMultiplayerSessions } from "./multiplayer.js";
 
 const library = installTrackLibrary();
 if (library) {
@@ -11,4 +12,5 @@ if (library) {
   installLibraryImports(library);
 }
 
+installMultiplayerSessions();
 await import("./mixer-app.js");
