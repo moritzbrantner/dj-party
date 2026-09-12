@@ -2,6 +2,10 @@ const DATABASE_NAME = "dj-party-analysis-cache";
 const DATABASE_VERSION = 1;
 const ANALYSIS_STORE = "analyses";
 const MAX_CACHE_ENTRIES = 256;
+const MAX_WAVEFORM_VALUES = 720 * 2;
+const MAX_BEAT_MARKERS = 32_768;
+const MAX_DOWNBEAT_MARKERS = 8_192;
+const MAX_ANALYSIS_SECONDS = 15 * 60;
 
 export const ANALYSIS_CACHE_NAMESPACE = "rhythm-v1-waveform720-limit900";
 
@@ -12,8 +16,8 @@ export async function analysisCacheIdForBytes(bytes) {
     return null;
   }
 
-  const buffer = bytes instanceof ArrayBuffer ? bytes : bytes?.buffer;
-  if (!(buffer instanceof ArrayBuffer)) {
+  const buffer = exactArrayBuffer(bytes);
+  if (!buffer) {
     return null;
   }
 
@@ -68,27 +72,19 @@ export function cacheRecordFromAnalysis(cacheId, message) {
     return null;
   }
 
-  const extrema = toTypedArray(message.extrema, Float32Array);
-  const beats = toTypedArray(message.beats, Float64Array);
-  const downbeats = toTypedArray(message.downbeats, Float64Array);
-  if (!extrema || !beats || !downbeats) {
-    return null;
-  }
-
-  const bpm = message.bpm === null || message.bpm === undefined ? null : Number(message.bpm);
-  const confidence = Number(message.confidence);
-  if ((bpm !== null && (!Number.isFinite(bpm) || bpm <= 0)) || !Number.isFinite(confidence)) {
+  const validated = validatedAnalysisPayload(message);
+  if (!validated) {
     return null;
   }
 
   return {
     id: cacheId,
     namespace: ANALYSIS_CACHE_NAMESPACE,
-    extrema: new Float32Array(extrema),
-    bpm,
-    confidence: Math.max(0, Math.min(1, confidence)),
-    beats: new Float64Array(beats),
-    downbeats: new Float64Array(downbeats),
+    extrema: new Float32Array(validated.extrema),
+    bpm: validated.bpm,
+    confidence: validated.confidence,
+    beats: new Float64Array(validated.beats),
+    downbeats: new Float64Array(validated.downbeats),
     analysisLimited: Boolean(message.analysisLimited),
     updatedAt: Date.now(),
   };
@@ -99,18 +95,8 @@ export function analysisMessageFromCache(record, deckId, requestId) {
     return null;
   }
 
-  const extrema = toTypedArray(record.extrema, Float32Array);
-  const beats = toTypedArray(record.beats, Float64Array);
-  const downbeats = toTypedArray(record.downbeats, Float64Array);
-  const bpm = record.bpm === null || record.bpm === undefined ? null : Number(record.bpm);
-  const confidence = Number(record.confidence);
-  if (
-    !extrema ||
-    !beats ||
-    !downbeats ||
-    (bpm !== null && (!Number.isFinite(bpm) || bpm <= 0)) ||
-    !Number.isFinite(confidence)
-  ) {
+  const validated = validatedAnalysisPayload(record);
+  if (!validated) {
     return null;
   }
 
@@ -118,14 +104,68 @@ export function analysisMessageFromCache(record, deckId, requestId) {
     type: "analysis-result",
     deckId,
     requestId,
-    extrema: new Float32Array(extrema),
-    bpm,
-    confidence: Math.max(0, Math.min(1, confidence)),
-    beats: new Float64Array(beats),
-    downbeats: new Float64Array(downbeats),
+    extrema: new Float32Array(validated.extrema),
+    bpm: validated.bpm,
+    confidence: validated.confidence,
+    beats: new Float64Array(validated.beats),
+    downbeats: new Float64Array(validated.downbeats),
     analysisLimited: Boolean(record.analysisLimited),
     cached: true,
   };
+}
+
+function validatedAnalysisPayload(value) {
+  const extrema = typedArray(value.extrema, Float32Array, MAX_WAVEFORM_VALUES);
+  const beats = typedArray(value.beats, Float64Array, MAX_BEAT_MARKERS);
+  const downbeats = typedArray(value.downbeats, Float64Array, MAX_DOWNBEAT_MARKERS);
+  if (!extrema || !beats || !downbeats || !validWaveform(extrema)) {
+    return null;
+  }
+  if (!validMarkers(beats) || !validMarkers(downbeats)) {
+    return null;
+  }
+
+  const bpm = value.bpm === null || value.bpm === undefined ? null : Number(value.bpm);
+  const confidence = Number(value.confidence);
+  if ((bpm !== null && (!Number.isFinite(bpm) || bpm <= 0)) || !Number.isFinite(confidence)) {
+    return null;
+  }
+  if (confidence < 0 || confidence > 1) {
+    return null;
+  }
+
+  return { extrema, bpm, confidence, beats, downbeats };
+}
+
+function validWaveform(extrema) {
+  if (extrema.length % 2 !== 0) {
+    return false;
+  }
+  for (let index = 0; index < extrema.length; index += 2) {
+    const minimum = extrema[index];
+    const maximum = extrema[index + 1];
+    if (
+      !Number.isFinite(minimum) ||
+      !Number.isFinite(maximum) ||
+      minimum < -1 ||
+      maximum > 1 ||
+      minimum > maximum
+    ) {
+      return false;
+    }
+  }
+  return true;
+}
+
+function validMarkers(markers) {
+  let previous = -Infinity;
+  for (const marker of markers) {
+    if (!Number.isFinite(marker) || marker < 0 || marker > MAX_ANALYSIS_SECONDS || marker <= previous) {
+      return false;
+    }
+    previous = marker;
+  }
+  return true;
 }
 
 async function openDatabase() {
@@ -172,20 +212,27 @@ function transactionDone(transaction) {
       once: true,
     });
     transaction.addEventListener("error", () => reject(transaction.error ?? new Error("IndexedDB transaction failed")), {
-      once: true },
-    );
+      once: true,
+    });
   });
 }
 
-function toTypedArray(value, Constructor) {
+function typedArray(value, Constructor, maxLength) {
   if (value instanceof Constructor) {
-    return value;
+    return value.length <= maxLength ? value : null;
   }
   if (Array.isArray(value)) {
-    return new Constructor(value);
+    return value.length <= maxLength ? new Constructor(value) : null;
+  }
+  return null;
+}
+
+function exactArrayBuffer(value) {
+  if (value instanceof ArrayBuffer) {
+    return value;
   }
   if (ArrayBuffer.isView(value)) {
-    return new Constructor(value.buffer.slice(value.byteOffset, value.byteOffset + value.byteLength));
+    return value.buffer.slice(value.byteOffset, value.byteOffset + value.byteLength);
   }
   return null;
 }
