@@ -331,7 +331,12 @@ export class SharedSessionCoordinator extends EventTarget {
       if (!sequence || !command || sequence <= this.lastCanonicalSequence) {
         return;
       }
-      if (!this.ready || sequence !== this.lastCanonicalSequence + 1) {
+      if (!this.ready) {
+        this.#requestSnapshot();
+        this.#emitChange();
+        return;
+      }
+      if (sequence !== this.lastCanonicalSequence + 1) {
         this.ready = false;
         this.snapshotRequestPending = false;
         this.#requestSnapshot();
