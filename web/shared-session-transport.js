@@ -104,10 +104,16 @@ export class MultiplayerSharedTransport extends EventTarget {
   }
 
   broadcastApplicationReliable(data) {
-    const peers = [...(this.controller.compatiblePeers ?? [])].sort();
-    for (const peerId of peers) {
-      this.sendApplicationReliable(peerId, data);
+    let sent = 0;
+    for (const peerId of [...(this.controller.compatiblePeers ?? [])].sort()) {
+      try {
+        this.sendApplicationReliable(peerId, data);
+        sent += 1;
+      } catch (error) {
+        this.dispatchEvent(new CustomEvent("send-error", { detail: { peerId, error } }));
+      }
     }
+    return sent;
   }
 
   emitInitialCompatiblePeers() {
