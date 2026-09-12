@@ -3,21 +3,7 @@ export const SHARED_SESSION_PROTOCOL = 1;
 const REQUEST_TYPE = "dj-party/shared/request";
 const COMMAND_TYPE = "dj-party/shared/command";
 const SNAPSHOT_TYPE = "dj-party/shared/snapshot";
-const CONTENT_ID_PATTERN = /^[0-9a-f]{64}$/;
 const DECK_IDS = new Set(["a", "b"]);
-const TRANSPORT_ACTIONS = new Set(["play", "pause", "seek"]);
-
-export async function contentIdForBytes(value) {
-  if (!globalThis.crypto?.subtle) {
-    return null;
-  }
-  const bytes = exactArrayBuffer(value);
-  if (!bytes) {
-    return null;
-  }
-  const digest = new Uint8Array(await globalThis.crypto.subtle.digest("SHA-256", bytes));
-  return [...digest].map((byte) => byte.toString(16).padStart(2, "0")).join("");
-}
 
 export function validateSharedCommand(value) {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
@@ -49,15 +35,6 @@ export function validateSharedCommand(value) {
       const deck = deckId(value.deck);
       const tone = validateTone(value.tone);
       return !deck || !tone ? null : { kind: "tone", deck, tone };
-    }
-    case "transport": {
-      const deck = deckId(value.deck);
-      const action = TRANSPORT_ACTIONS.has(value.action) ? value.action : null;
-      const position = finiteRange(value.position, 0, 24 * 60 * 60);
-      const contentId = validContentId(value.contentId) ? value.contentId : null;
-      return !deck || !action || position === null || !contentId
-        ? null
-        : { kind: "transport", deck, action, position, contentId };
     }
     default:
       return null;
@@ -91,7 +68,12 @@ export class SharedSessionCoordinator extends EventTarget {
   }
 
   registerMixer(adapter) {
-    if (!adapter || typeof adapter.captureState !== "function" || typeof adapter.applyCommand !== "function" || typeof adapter.applySnapshot !== "function") {
+    if (
+      !adapter ||
+      typeof adapter.captureState !== "function" ||
+      typeof adapter.applyCommand !== "function" ||
+      typeof adapter.applySnapshot !== "function"
+    ) {
       throw new Error("Shared session mixer adapter is incomplete");
     }
     this.mixer = adapter;
@@ -118,9 +100,11 @@ export class SharedSessionCoordinator extends EventTarget {
     const signal = this.transportAbort.signal;
     transport.addEventListener("change", () => this.#transportChanged(), { signal });
     transport.addEventListener("peer-compatible", (event) => this.#peerCompatible(event.detail?.peerId), { signal });
-    transport.addEventListener("application-message", (event) => {
-      this.#receive(event.detail?.peerId, event.detail?.data);
-    }, { signal });
+    transport.addEventListener(
+      "application-message",
+      (event) => this.#receive(event.detail?.peerId, event.detail?.data),
+      { signal },
+    );
     this.#transportChanged();
   }
 
@@ -161,8 +145,7 @@ export class SharedSessionCoordinator extends EventTarget {
     }
 
     if (this.#isHost()) {
-      const message = this.#canonicalize(command);
-      this.transport.broadcastApplicationReliable(message);
+      this.transport.broadcastApplicationReliable(this.#canonicalize(command));
       this.ready = true;
       this.#emitChange();
       return true;
@@ -245,8 +228,7 @@ export class SharedSessionCoordinator extends EventTarget {
       }
       this.lastRequestSequenceByPeer.set(peerId, requestSequence);
       this.mixer.applyCommand(command, { source: "remote-request", peerId });
-      const canonical = this.#canonicalize(command);
-      this.transport.broadcastApplicationReliable(canonical);
+      this.transport.broadcastApplicationReliable(this.#canonicalize(command));
       this.#emitChange();
       return;
     }
@@ -327,23 +309,7 @@ function validateDeckState(value) {
   if (level === null || tempoPercent === null || typeof value.keyLock !== "boolean" || !tone) {
     return null;
   }
-  const transport = validateTransportState(value.transport);
-  if (!transport) {
-    return null;
-  }
-  return { level, tempoPercent, keyLock: value.keyLock, tone, transport };
-}
-
-function validateTransportState(value) {
-  if (!value || typeof value !== "object" || Array.isArray(value)) {
-    return null;
-  }
-  const position = finiteRange(value.position, 0, 24 * 60 * 60);
-  const contentId = value.contentId === null ? null : validContentId(value.contentId) ? value.contentId : undefined;
-  if (position === null || contentId === undefined || typeof value.playing !== "boolean") {
-    return null;
-  }
-  return { position, playing: value.playing, contentId };
+  return { level, tempoPercent, keyLock: value.keyLock, tone };
 }
 
 function validateTone(value) {
@@ -365,10 +331,6 @@ function deckId(value) {
   return DECK_IDS.has(value) ? value : null;
 }
 
-function validContentId(value) {
-  return typeof value === "string" && CONTENT_ID_PATTERN.test(value);
-}
-
 function finiteRange(value, minimum, maximum) {
   const number = Number(value);
   return Number.isFinite(number) && number >= minimum && number <= maximum ? number : null;
@@ -385,14 +347,4 @@ function positiveSafeInteger(value) {
 
 function nonNegativeSafeInteger(value) {
   return Number.isSafeInteger(value) && value >= 0 ? value : null;
-}
-
-function exactArrayBuffer(value) {
-  if (value instanceof ArrayBuffer) {
-    return value;
-  }
-  if (ArrayBuffer.isView(value)) {
-    return value.buffer.slice(value.byteOffset, value.byteOffset + value.byteLength);
-  }
-  return null;
 }
