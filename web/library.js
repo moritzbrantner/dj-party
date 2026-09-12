@@ -13,8 +13,9 @@ export function isSupportedAudioFile(file) {
   return type.startsWith("audio/") || AUDIO_EXTENSION.test(name);
 }
 
-export function trackIdForFile(file) {
-  const name = String(file?.name ?? "");
+export function trackIdForFile(file, sourcePath = "") {
+  const explicitPath = String(sourcePath ?? "").replaceAll("\\", "/").trim();
+  const name = explicitPath || String(file?.name ?? "");
   const size = Number.isFinite(Number(file?.size)) ? Number(file.size) : 0;
   const lastModified = Number.isFinite(Number(file?.lastModified)) ? Number(file.lastModified) : 0;
   return `${name}\u0000${size}\u0000${lastModified}`;
@@ -36,6 +37,16 @@ export function formatFileSize(bytes) {
 
   const digits = unitIndex === 0 || value >= 100 ? 0 : value >= 10 ? 1 : 2;
   return `${value.toFixed(digits)} ${units[unitIndex]}`;
+}
+
+function importItem(value) {
+  if (value?.file) {
+    return {
+      file: value.file,
+      path: String(value.path ?? "").replaceAll("\\", "/").trim(),
+    };
+  }
+  return { file: value, path: "" };
 }
 
 function requestResult(request) {
@@ -106,7 +117,7 @@ class TrackStore {
     return records;
   }
 
-  async addMany(files) {
+  async addMany(values) {
     const database = await this.open();
     const transaction = database.transaction(TRACK_STORE, "readwrite");
     const store = transaction.objectStore(TRACK_STORE);
@@ -114,8 +125,9 @@ class TrackStore {
     const added = [];
     const skipped = [];
 
-    for (const file of files) {
-      const id = trackIdForFile(file);
+    for (const value of values) {
+      const { file, path } = importItem(value);
+      const id = trackIdForFile(file, path);
       if (existingIds.has(id)) {
         skipped.push(id);
         continue;
@@ -124,6 +136,7 @@ class TrackStore {
       const record = {
         id,
         name: file.name,
+        path: path || String(file.webkitRelativePath ?? "").replaceAll("\\", "/").trim() || file.name,
         type: file.type || "",
         size: file.size,
         lastModified: file.lastModified || 0,
@@ -165,6 +178,7 @@ class BrowserTrackLibrary {
     this.list = null;
     this.search = null;
     this.importSurface = null;
+    this.deckPersistenceSkips = new Set();
     this.ready = Promise.resolve(false);
   }
 
@@ -277,6 +291,9 @@ class BrowserTrackLibrary {
       input?.addEventListener(
         "change",
         () => {
+          if (this.deckPersistenceSkips.delete(id)) {
+            return;
+          }
           void this.importFiles([...(input.files ?? [])], { silent: true });
         },
         { capture: true },
@@ -313,10 +330,10 @@ class BrowserTrackLibrary {
     }
   }
 
-  async importFiles(files, { silent = false } = {}) {
-    const supported = files.filter(isSupportedAudioFile);
+  async importFiles(values, { silent = false } = {}) {
+    const supported = values.map(importItem).filter((entry) => isSupportedAudioFile(entry.file));
     if (supported.length === 0) {
-      if (!silent && files.length > 0) {
+      if (!silent && values.length > 0) {
         this.setStatus("No supported audio files were selected");
       }
       return;
@@ -451,9 +468,11 @@ class BrowserTrackLibrary {
 
       transfer.items.add(file);
       input.files = transfer.files;
+      this.deckPersistenceSkips.add(deckId);
       input.dispatchEvent(new Event("change", { bubbles: true }));
       this.setStatus(`Loaded ${stripExtension(record.name)} into Deck ${deckId.toUpperCase()}`);
     } catch (error) {
+      this.deckPersistenceSkips.delete(deckId);
       console.error(`Could not load saved track into Deck ${deckId.toUpperCase()}`, error);
       this.setStatus("Could not load that saved track");
     }

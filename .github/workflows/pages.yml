@@ -41,12 +41,12 @@ jobs:
 
       - name: Check browser JavaScript syntax
         run: |
-          for file in web/app.js web/mixer-app.js web/library.js web/analysis-worker.js web/performance.js web/output-routing.js web/effects.js; do
+          for file in web/app.js web/mixer-app.js web/library.js web/library-imports.js web/archive-import.js web/analysis-cache.js web/analysis-worker.js web/performance.js web/output-routing.js web/effects.js; do
             node --input-type=module --check < "$file"
           done
 
-      - name: Test browser-local track library helpers
-        run: node --test web/library.test.mjs
+      - name: Test browser-local helpers
+        run: node --test web/library.test.mjs web/archive-import.test.mjs web/analysis-cache.test.mjs
 
       - name: Install wasm-pack
         run: cargo install wasm-pack --version 0.13.1 --locked
@@ -90,12 +90,23 @@ jobs:
           app = (root / "app.js").read_text()
           mixer = (root / "mixer-app.js").read_text()
           library = (root / "library.js").read_text()
+          library_imports = (root / "library-imports.js").read_text()
+          archive_import = (root / "archive-import.js").read_text()
+          analysis_cache = (root / "analysis-cache.js").read_text()
           worker = (root / "analysis-worker.js").read_text()
           performance = (root / "performance.js").read_text()
           routing = (root / "output-routing.js").read_text()
           effects = (root / "effects.js").read_text()
           assert './library.js' in app, "browser bootstrap does not install the local track library"
+          assert './library-imports.js' in app, "browser bootstrap does not install archive/playlist imports"
+          assert './library-imports.css' in app, "browser bootstrap does not install archive/playlist styles"
           assert './mixer-app.js' in app, "browser bootstrap does not start the mixer adapter"
+          assert './archive-import.js' in library_imports, "library imports do not reference bounded archive helpers"
+          assert 'extractZipLibrary' in library_imports and 'parseM3u' in library_imports, "ZIP/M3U import path is incomplete"
+          assert 'DecompressionStream' in archive_import and 'crc32' in archive_import, "ZIP import does not expose bounded browser decompression and checksum verification"
+          assert './analysis-cache.js' in worker, "analysis worker does not reference analysis cache"
+          assert 'readCachedTrackAnalysis' in worker and 'writeCachedTrackAnalysis' in worker, "analysis worker does not reuse cached analysis"
+          assert 'SHA-256' in analysis_cache and 'ANALYSIS_CACHE_NAMESPACE' in analysis_cache, "analysis cache is not content-addressed and versioned"
           assert './pkg/dj_party.js' in mixer, "mixer adapter does not reference generated WASM package"
           assert './pkg/dj_party.js' in worker, "analysis worker does not reference generated WASM package"
           assert './pkg/dj_party.js' in performance, "performance transport does not reference generated WASM package"
@@ -116,13 +127,12 @@ jobs:
           assert './library.css' in library, "track library does not reference its local stylesheet"
           assert 'selectAudioOutput' in routing and 'setSinkId' in routing, "output-routing adapter does not own browser sink selection"
           assert 'phase-sync' in html_path.read_text(), "phase-sync controls missing from Pages HTML"
-          assert (root / "library.css").is_file(), "missing track-library stylesheet"
-          assert (root / "mixer-app.js").is_file(), "missing mixer browser adapter"
-          assert (root / "library.js").is_file(), "missing browser-local track library"
-          assert (root / "monitoring.css").is_file(), "missing monitoring stylesheet"
-          assert (root / "output-routing.js").is_file(), "missing output-routing adapter"
-          assert (root / "effects.js").is_file(), "missing deck effects adapter"
-          assert (root / "effects.css").is_file(), "missing deck effects stylesheet"
+          for asset in [
+              "library.css", "library.js", "library-imports.js", "library-imports.css",
+              "archive-import.js", "analysis-cache.js", "mixer-app.js", "monitoring.css",
+              "output-routing.js", "effects.js", "effects.css"
+          ]:
+              assert (root / asset).is_file(), f"missing Pages asset: {asset}"
           assert (root / "pkg" / "dj_party.js").is_file(), "missing generated WASM JavaScript"
           assert (root / "pkg" / "dj_party_bg.wasm").is_file(), "missing generated WASM binary"
           PY

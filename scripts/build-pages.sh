@@ -23,12 +23,16 @@ cp "$ROOT_DIR/web/index.html" "$OUTPUT_DIR/index.html"
 cp "$ROOT_DIR/web/app.js" "$OUTPUT_DIR/app.js"
 cp "$ROOT_DIR/web/mixer-app.js" "$OUTPUT_DIR/mixer-app.js"
 cp "$ROOT_DIR/web/library.js" "$OUTPUT_DIR/library.js"
+cp "$ROOT_DIR/web/library-imports.js" "$OUTPUT_DIR/library-imports.js"
+cp "$ROOT_DIR/web/archive-import.js" "$OUTPUT_DIR/archive-import.js"
+cp "$ROOT_DIR/web/analysis-cache.js" "$OUTPUT_DIR/analysis-cache.js"
 cp "$ROOT_DIR/web/analysis-worker.js" "$OUTPUT_DIR/analysis-worker.js"
 cp "$ROOT_DIR/web/performance.js" "$OUTPUT_DIR/performance.js"
 cp "$ROOT_DIR/web/output-routing.js" "$OUTPUT_DIR/output-routing.js"
 cp "$ROOT_DIR/web/effects.js" "$OUTPUT_DIR/effects.js"
 cp "$ROOT_DIR/web/styles.css" "$OUTPUT_DIR/styles.css"
 cp "$ROOT_DIR/web/library.css" "$OUTPUT_DIR/library.css"
+cp "$ROOT_DIR/web/library-imports.css" "$OUTPUT_DIR/library-imports.css"
 cp "$ROOT_DIR/web/analysis.css" "$OUTPUT_DIR/analysis.css"
 cp "$ROOT_DIR/web/monitoring.css" "$OUTPUT_DIR/monitoring.css"
 cp "$ROOT_DIR/web/effects.css" "$OUTPUT_DIR/effects.css"
@@ -39,12 +43,16 @@ for required in \
   "$OUTPUT_DIR/app.js" \
   "$OUTPUT_DIR/mixer-app.js" \
   "$OUTPUT_DIR/library.js" \
+  "$OUTPUT_DIR/library-imports.js" \
+  "$OUTPUT_DIR/archive-import.js" \
+  "$OUTPUT_DIR/analysis-cache.js" \
   "$OUTPUT_DIR/analysis-worker.js" \
   "$OUTPUT_DIR/performance.js" \
   "$OUTPUT_DIR/output-routing.js" \
   "$OUTPUT_DIR/effects.js" \
   "$OUTPUT_DIR/styles.css" \
   "$OUTPUT_DIR/library.css" \
+  "$OUTPUT_DIR/library-imports.css" \
   "$OUTPUT_DIR/analysis.css" \
   "$OUTPUT_DIR/monitoring.css" \
   "$OUTPUT_DIR/effects.css" \
