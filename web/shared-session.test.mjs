@@ -4,7 +4,6 @@ import test from "node:test";
 import {
   SHARED_SESSION_PROTOCOL,
   SharedSessionCoordinator,
-  contentIdForBytes,
   validateSharedCommand,
   validateSharedState,
 } from "./shared-session.js";
@@ -18,28 +17,18 @@ if (typeof globalThis.CustomEvent !== "function") {
   };
 }
 
-const CONTENT_ID = "11".repeat(32);
-
-test("track content IDs are deterministic SHA-256 digests", async () => {
-  const first = await contentIdForBytes(new Uint8Array([1, 2, 3]));
-  const same = await contentIdForBytes(new Uint8Array([1, 2, 3]).buffer);
-  const other = await contentIdForBytes(new Uint8Array([1, 2, 4]));
-  assert.equal(first, same);
-  assert.match(first, /^[0-9a-f]{64}$/);
-  assert.notEqual(first, other);
-});
-
-test("shared commands fail closed outside deterministic product bounds", () => {
+test("shared commands fail closed outside deterministic mixer bounds", () => {
   assert.deepEqual(validateSharedCommand({ kind: "crossfader", position: 0.5 }), {
     kind: "crossfader",
     position: 0.5,
   });
-  assert.deepEqual(
-    validateSharedCommand({ kind: "transport", deck: "a", action: "seek", position: 12.5, contentId: CONTENT_ID }),
-    { kind: "transport", deck: "a", action: "seek", position: 12.5, contentId: CONTENT_ID },
-  );
+  assert.deepEqual(validateSharedCommand({ kind: "tone", deck: "b", tone: tone() }), {
+    kind: "tone",
+    deck: "b",
+    tone: tone(),
+  });
   assert.equal(validateSharedCommand({ kind: "tempo", deck: "a", percent: 20 }), null);
-  assert.equal(validateSharedCommand({ kind: "transport", deck: "a", action: "play", position: 0 }), null);
+  assert.equal(validateSharedCommand({ kind: "transport", deck: "a", action: "play" }), null);
   assert.equal(validateSharedCommand({ kind: "tone", deck: "x", tone: tone() }), null);
 });
 
@@ -131,6 +120,16 @@ test("guest local changes become requests to the verified host", () => {
       },
     },
   ]);
+});
+
+test("guest cannot submit until the host is a verified peer", () => {
+  const transport = new FakeTransport({ participantId: "GUEST", hostParticipantId: "HOST", compatiblePeerIds: [] });
+  const coordinator = new SharedSessionCoordinator();
+  coordinator.registerMixer(new FakeMixer());
+  coordinator.attachTransport(transport);
+
+  assert.equal(coordinator.submitLocalCommand({ kind: "crossfader", position: 0.2 }), false);
+  assert.deepEqual(transport.sent, []);
 });
 
 test("host sends a current snapshot when a compatible peer appears", () => {
@@ -239,7 +238,6 @@ function deckState() {
     tempoPercent: 0,
     keyLock: true,
     tone: tone(),
-    transport: { position: 0, playing: false, contentId: null },
   };
 }
 
