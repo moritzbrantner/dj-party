@@ -165,13 +165,20 @@ export class SharedSessionCoordinator extends EventTarget {
       return false;
     }
     this.localRequestSequence += 1;
-    this.transport.sendApplicationReliable(host, {
-      type: REQUEST_TYPE,
-      protocol: SHARED_SESSION_PROTOCOL,
-      requestSequence: this.localRequestSequence,
-      command,
-    });
-    return true;
+    try {
+      this.transport.sendApplicationReliable(host, {
+        type: REQUEST_TYPE,
+        protocol: SHARED_SESSION_PROTOCOL,
+        requestSequence: this.localRequestSequence,
+        command,
+      });
+      return true;
+    } catch {
+      this.snapshotRequestPending = false;
+      this.ready = false;
+      this.#emitChange();
+      return false;
+    }
   }
 
   publishSnapshot() {
@@ -247,12 +254,18 @@ export class SharedSessionCoordinator extends EventTarget {
     if (typeof host !== "string" || !state.compatiblePeerIds?.includes(host)) {
       return false;
     }
-    this.transport.sendApplicationReliable(host, {
-      type: SNAPSHOT_REQUEST_TYPE,
-      protocol: SHARED_SESSION_PROTOCOL,
-    });
-    this.snapshotRequestPending = true;
-    return true;
+    try {
+      this.transport.sendApplicationReliable(host, {
+        type: SNAPSHOT_REQUEST_TYPE,
+        protocol: SHARED_SESSION_PROTOCOL,
+      });
+      this.snapshotRequestPending = true;
+      return true;
+    } catch {
+      this.snapshotRequestPending = false;
+      this.ready = false;
+      return false;
+    }
   }
 
   #sendSnapshot(peerId) {
@@ -263,8 +276,12 @@ export class SharedSessionCoordinator extends EventTarget {
     if (!message) {
       return false;
     }
-    this.transport.sendApplicationReliable(peerId, message);
-    return true;
+    try {
+      this.transport.sendApplicationReliable(peerId, message);
+      return true;
+    } catch {
+      return false;
+    }
   }
 
   #receive(peerId, data) {
