@@ -23,6 +23,9 @@ cp "$ROOT_DIR/web/index.html" "$OUTPUT_DIR/index.html"
 cp "$ROOT_DIR/web/app.js" "$OUTPUT_DIR/app.js"
 cp "$ROOT_DIR/web/mixer-app.js" "$OUTPUT_DIR/mixer-app.js"
 cp "$ROOT_DIR/web/multiplayer.js" "$OUTPUT_DIR/multiplayer.js"
+cp "$ROOT_DIR/web/shared-session.js" "$OUTPUT_DIR/shared-session.js"
+cp "$ROOT_DIR/web/shared-session-transport.js" "$OUTPUT_DIR/shared-session-transport.js"
+cp "$ROOT_DIR/web/collaborative-mixer.js" "$OUTPUT_DIR/collaborative-mixer.js"
 cp "$ROOT_DIR/web/library.js" "$OUTPUT_DIR/library.js"
 cp "$ROOT_DIR/web/library-imports.js" "$OUTPUT_DIR/library-imports.js"
 cp "$ROOT_DIR/web/archive-import.js" "$OUTPUT_DIR/archive-import.js"
@@ -45,6 +48,9 @@ for required in \
   "$OUTPUT_DIR/app.js" \
   "$OUTPUT_DIR/mixer-app.js" \
   "$OUTPUT_DIR/multiplayer.js" \
+  "$OUTPUT_DIR/shared-session.js" \
+  "$OUTPUT_DIR/shared-session-transport.js" \
+  "$OUTPUT_DIR/collaborative-mixer.js" \
   "$OUTPUT_DIR/library.js" \
   "$OUTPUT_DIR/library-imports.js" \
   "$OUTPUT_DIR/archive-import.js" \

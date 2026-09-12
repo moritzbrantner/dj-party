@@ -31,9 +31,10 @@ The app can:
 - blend the cued decks with the post-fader master in the headphone monitor using a Rust-owned equal-power Cue ↔ Master control;
 - host or join a 2–16 participant peer-to-peer lobby through `multiplayer-setup-service` without moving mixer authority into the setup service;
 - share a public lobby/service invite URL while keeping participant capability tokens inside the reusable service client;
-- verify connected peers with a versioned DJ Party hello before later shared-session commands are introduced.
+- verify connected peers with a versioned DJ Party hello;
+- synchronize crossfader, deck levels, tempo, key lock, and per-deck EQ/filter state between verified DJ Party peers through a host-sequenced application protocol.
 
-Imported library blobs, playlists, cached analysis metadata, selected tracks, decoded PCM, timing state, cue points, loops, tone state, and monitor state stay on the device. The multiplayer setup slice sends only lobby/signaling traffic through the configured setup service and a small DJ Party compatibility hello over the peer-to-peer reliable channel. It does not send tracks, audio, mixer state, chat, or content bytes. Browser-local data is subject to the browser's site-storage quota and can disappear if site data is cleared.
+Imported library blobs, playlists, cached analysis metadata, selected tracks, decoded PCM, timing state, cue points, loops, and physical monitor/output routing remain on the device. Multiplayer uses the configured setup service only for lobby/signaling/TURN setup; verified peers exchange bounded DJ Party mixer commands directly over the service-created reliable WebRTC channel. Tracks, decoded audio, chat, and content bytes are not transferred in the current shared-mixer phase.
 
 ## Architecture
 
@@ -47,22 +48,39 @@ ZIP extraction is deliberately fail-closed: multi-disk/ZIP64/encrypted entries a
 
 Track-analysis cache entries are keyed by a SHA-256 fingerprint of decoded mono PCM plus sample rate and an explicit analysis namespace. A stale namespace or malformed cached record is ignored. The cache is an optimization only: cache failures never replace or weaken the normal Rust-backed waveform/rhythm analysis path.
 
-Headphone cueing is deliberately pre-fader: each deck's tone chain is applied before the signal splits into the post-fader master branch and pre-fader cue branch. The selected cue therefore hears the same EQ/filter state as the deck while still bypassing deck level and crossfader. The optional Master contribution follows the same Rust-owned post-fader deck gains heard on the main output. If the browser cannot select a separate audio output, the headphone controls stay disabled and the existing master playback route is unchanged.
+Headphone cueing is deliberately pre-fader: each deck's tone chain is applied before the signal splits into the post-fader master branch and pre-fader cue branch. The selected cue therefore hears the same EQ/filter state as the deck while still bypassing deck level and crossfader. The optional Master contribution follows the same Rust-owned post-fader deck gains heard on the main output. Physical headphone/master output selection and monitor cue state remain local hardware policy and are never shared.
 
 ### Multiplayer setup boundary
 
-DJ Party consumes the reusable `LobbySession` browser client from `multiplayer-setup-service`, pinned to source commit `556f1aa2ac889acffd5b2b27163fca10f1901793`. DJ Party does not copy the service's lobby, capability-token, signaling, reconnect, ICE, or WebRTC peer-link state machines.
+DJ Party consumes the reusable `LobbySession` browser client from `multiplayer-setup-service`, pinned to source commit `556f1aa2ac889acffd5b2b27163fca10f1901793`. DJ Party does not copy the service's lobby, capability-token, signaling, reconnect, ICE, TURN, or WebRTC peer-link state machines.
 
-The current adapter always requests the service client's `mesh` topology with optional content sharing disabled. The setup service remains a rendezvous/control-plane service: lobby creation/join, participant admission, authenticated signaling, and peer connection setup. It does not receive or own DJ Party mixer/audio state.
+The adapter uses `mesh` topology with optional content sharing disabled. The setup service remains a rendezvous/control-plane service: lobby creation/join, participant admission, authenticated signaling, and peer connection setup. It does not receive or own DJ Party mixer/audio state.
 
 The configured signaling API and public lobby code may be stored in URL query parameters (`api` and `lobby`) so an invite can be copied. Participant capability tokens are never copied into DJ Party state or URLs. On localhost the UI defaults to `http://127.0.0.1:8787`; hosted pages require an explicitly configured HTTPS service. The service must allow the DJ Party page origin through its `ALLOWED_ORIGINS` configuration.
 
-Shared mixer commands, state reconciliation, optional asset transfer, and collaborative authority rules are intentionally deferred to the next roadmap slice.
+### Shared mixer authority
+
+Shared mixer state is a DJ Party application protocol layered over already verified reliable peer links. The lobby host is the canonical serializer, not an authoritative audio server: the host assigns monotonically increasing sequence numbers to valid mixer changes, and every browser still applies the same existing Rust/WebAudio mixer behavior locally.
+
+Guests send bounded change requests with monotonically increasing per-guest request numbers. The host rejects duplicate/stale requests, applies a valid request through the same local control path, and broadcasts the resulting canonical command. Guests accept canonical commands and snapshots only from the current lobby host and ignore stale sequence numbers.
+
+A host snapshot is required before a guest reports the shared mixer as converged. New/reconnected guests explicitly request the snapshot, so session setup finishing before the mixer UI initializes cannot silently lose the canonical state.
+
+The current synchronized surface is deliberately limited to:
+
+- crossfader position;
+- Deck A/B level;
+- Deck A/B tempo percentage;
+- Deck A/B key-lock state;
+- Deck A/B Low/Mid/High EQ and filter controls.
+
+Play/pause/seek, cue points, loops, hot cues, track selection, and content bytes remain local in this phase. Those transport operations require verified track identity and clock/alignment semantics and will be added together rather than pretending two browsers necessarily have the same audio loaded.
 
 Reusable ownership remains explicit:
 
 - BPM, beat-grid, downbeat, related rhythm analysis, reusable policy-neutral playback/DJ calculations, and generic DSP/filter math come from shared audio/math layers rather than being reimplemented here;
-- collaborative lobby/signaling and WebRTC connection setup come from `multiplayer-setup-service`; DJ Party owns its application protocol and mixer semantics.
+- collaborative lobby/signaling and WebRTC connection setup come from `multiplayer-setup-service`;
+- host sequencing, convergence, replay protection, and mixer commands are DJ Party application semantics.
 
 ## Build and validate
 
@@ -72,7 +90,7 @@ Requirements: Rust 1.95.0, the `wasm32-unknown-unknown` target, and `wasm-pack` 
 cargo fmt --all --check
 cargo clippy --all-targets --all-features -- -D warnings
 cargo test --all-features
-node --test web/library.test.mjs web/archive-import.test.mjs web/analysis-cache.test.mjs web/multiplayer.test.mjs
+node --test web/library.test.mjs web/archive-import.test.mjs web/analysis-cache.test.mjs web/multiplayer.test.mjs web/shared-session.test.mjs web/shared-session-transport.test.mjs web/collaborative-mixer.test.mjs
 cargo install wasm-pack --version 0.13.1 --locked
 bash scripts/build-pages.sh
 ```
@@ -92,3 +110,6 @@ The generated static site is written to `_site/` and can be served by any local 
 9. ZIP/playlist library import plus reusable cached track-analysis metadata — done
 10. Multiplayer sessions through `multiplayer-setup-service` — done
 11. Shared-session authority, synchronization, optional asset transfer, and collaborative mixing — current slice
+   - host-sequenced shared mixer controls and late-join reconciliation — implemented in the current phase
+   - track identity + synchronized transport/clock alignment — next
+   - optional verified asset transfer and broader collaborative mixing — later
