@@ -41,7 +41,7 @@ jobs:
 
       - name: Check browser JavaScript syntax
         run: |
-          for file in web/app.js web/mixer-app.js web/library.js web/analysis-worker.js web/performance.js web/output-routing.js; do
+          for file in web/app.js web/mixer-app.js web/library.js web/analysis-worker.js web/performance.js web/output-routing.js web/effects.js; do
             node --input-type=module --check < "$file"
           done
 
@@ -93,16 +93,23 @@ jobs:
           worker = (root / "analysis-worker.js").read_text()
           performance = (root / "performance.js").read_text()
           routing = (root / "output-routing.js").read_text()
+          effects = (root / "effects.js").read_text()
           assert './library.js' in app, "browser bootstrap does not install the local track library"
           assert './mixer-app.js' in app, "browser bootstrap does not start the mixer adapter"
           assert './pkg/dj_party.js' in mixer, "mixer adapter does not reference generated WASM package"
           assert './pkg/dj_party.js' in worker, "analysis worker does not reference generated WASM package"
           assert './pkg/dj_party.js' in performance, "performance transport does not reference generated WASM package"
+          assert './pkg/dj_party.js' in effects, "effects adapter does not reference generated WASM package"
           assert './performance.js' in mixer, "mixer adapter does not reference performance transport"
           assert './output-routing.js' in mixer, "mixer adapter does not reference output-routing adapter"
+          assert './effects.js' in mixer, "mixer adapter does not reference deck effects adapter"
           assert './monitoring.css' in mixer, "mixer adapter does not reference monitoring styles"
+          assert './effects.css' in effects, "effects adapter does not reference effects styles"
           assert 'analysis-worker.js' in mixer, "mixer adapter does not start the analysis worker"
           assert 'MonitorMixer' in mixer, "mixer adapter does not use Rust-owned monitor semantics"
+          assert 'DeckEffects' in mixer, "mixer adapter does not route decks through effects"
+          assert 'plan_deck_tone' in effects, "effects adapter does not use Rust-owned tone policy"
+          assert 'createBiquadFilter' in effects, "effects adapter does not apply the tone plan through Web Audio"
           assert 'indexedDB' in library, "track library does not use browser-local IndexedDB storage"
           assert 'multiple' in library and 'webkitdirectory' in library, "track library does not expose batch and folder import"
           assert 'DataTransfer' in library, "saved tracks cannot be handed back to the existing deck file path"
@@ -114,6 +121,8 @@ jobs:
           assert (root / "library.js").is_file(), "missing browser-local track library"
           assert (root / "monitoring.css").is_file(), "missing monitoring stylesheet"
           assert (root / "output-routing.js").is_file(), "missing output-routing adapter"
+          assert (root / "effects.js").is_file(), "missing deck effects adapter"
+          assert (root / "effects.css").is_file(), "missing deck effects stylesheet"
           assert (root / "pkg" / "dj_party.js").is_file(), "missing generated WASM JavaScript"
           assert (root / "pkg" / "dj_party_bg.wasm").is_file(), "missing generated WASM binary"
           PY

@@ -1,4 +1,5 @@
 import { AudioOutputRouter, outputDeviceLabel } from "./output-routing.js";
+import { DeckEffects, installDeckEffectsUi } from "./effects.js";
 import { PerformanceControls } from "./performance.js";
 import init, {
   CuePoint,
@@ -80,6 +81,7 @@ class Deck {
       this,
       () => state.decks.get(this.id === "a" ? "b" : "a"),
     );
+    this.effects = new DeckEffects(id);
 
     setPitchPreservation(this.audio, true);
     this.resizeObserver = new ResizeObserver(() => this.drawWaveform());
@@ -419,8 +421,7 @@ class Deck {
     this.cueGainNode = state.audioContext.createGain();
     this.cueGainNode.gain.value = 0;
 
-    this.sourceNode.connect(this.gainNode);
-    this.sourceNode.connect(this.cueGainNode);
+    this.effects.connect(state.audioContext, this.sourceNode, this.gainNode, this.cueGainNode);
     this.gainNode.connect(state.audioContext.destination);
     this.gainNode.connect(masterMonitorInput);
     this.cueGainNode.connect(cueDestination);
@@ -709,6 +710,7 @@ class Deck {
     this.stopPlaybackAnimation();
     this.resizeObserver.disconnect();
     this.performance.destroy();
+    this.effects.destroy();
     this.sourceNode?.disconnect();
     this.gainNode?.disconnect();
     this.cueGainNode?.disconnect();
@@ -1060,6 +1062,7 @@ async function start() {
   state.monitor = new MonitorMixer();
   state.outputRouter = new AudioOutputRouter();
   installMonitoringUi();
+  installDeckEffectsUi();
 
   state.decks.set(
     "a",

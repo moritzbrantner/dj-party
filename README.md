@@ -13,6 +13,7 @@ The app can:
 - drag and drop MP3 and other browser-supported audio files;
 - play, pause, restart, seek, and control deck level;
 - mix decks with a Rust-owned equal-power crossfader;
+- shape each deck with Rust-owned Low/Mid/High ±12 dB product semantics and a bipolar low-pass ↔ bypass ↔ high-pass sweep;
 - render full-track waveforms with Rust-owned extrema;
 - analyze BPM, beats, downbeats, and rhythm confidence through the pinned `audio-analysis` Rust engine;
 - set an exact cue plus four beat-quantized hot cues per deck;
@@ -25,21 +26,21 @@ The app can:
 - route either deck pre-fader to a separate headphone output when the browser exposes secure audio-output selection;
 - blend the cued decks with the post-fader master in the headphone monitor using a Rust-owned equal-power Cue ↔ Master control.
 
-Imported library blobs, selected tracks, decoded PCM, timing state, cue points, loops, analysis results, and monitor state stay on the device. Nothing is uploaded by the current app. The saved music collection is subject to the browser's site-storage quota and can disappear if site data is cleared.
+Imported library blobs, selected tracks, decoded PCM, timing state, cue points, loops, analysis results, tone state, and monitor state stay on the device. Nothing is uploaded by the current app. The saved music collection is subject to the browser's site-storage quota and can disappear if site data is cleared.
 
 ## Architecture
 
-DJ Party's Rust/WASM layer is authoritative for deterministic mixer state and product policy: tempo range, effective-BPM/BPM-sync surface, beat/bar and phase-sync behavior, hot-cue and beat-jump semantics, beat-loop policy, and headphone-monitor semantics. Reusable policy-neutral audio/DJ calculations such as equal-power crossfade gains, tempo/rate conversion, tempo-only BPM-sync math, generic beat-loop selection, and waveform extrema come from the pinned `audio-analysis` processing crates and are consumed rather than reimplemented here.
+DJ Party's Rust/WASM layer is authoritative for deterministic mixer state and product policy: tempo range, effective-BPM/BPM-sync surface, beat/bar and phase-sync behavior, hot-cue and beat-jump semantics, beat-loop policy, per-deck EQ/filter parameter semantics, and headphone-monitor semantics. Reusable policy-neutral audio/DJ calculations such as equal-power crossfade gains, tempo/rate conversion, tempo-only BPM-sync math, generic beat-loop selection, waveform extrema, and generic filter/DSP primitives remain outside DJ Party and are consumed rather than reimplemented here.
 
-The browser layer owns browser-only capabilities: local file and folder selection, browser-local IndexedDB track storage, object URLs, audio decoding, `AudioContext`, media-element playback, pitch-preservation/key-lock behavior, DOM rendering, workers, physical audio-output selection, and applying the seek/rate/gain plans returned by Rust.
+The browser layer owns browser-only capabilities: local file and folder selection, browser-local IndexedDB track storage, object URLs, audio decoding, `AudioContext`, media-element playback, Web Audio EQ/filter nodes, pitch-preservation/key-lock behavior, DOM rendering, workers, physical audio-output selection, and applying the transport/gain/tone plans returned by Rust. DJ Party does not implement biquad coefficient design in the browser adapter.
 
 The local library deliberately reuses the existing deck file-input path when a saved track is loaded. It does not duplicate deck reset, analysis, transport, or mixer semantics. Re-importing the same file identity is idempotent and does not create a duplicate collection row.
 
-Headphone cueing is deliberately pre-fader: the selected deck cue branches bypass the deck level and crossfader, while the optional Master contribution follows the same Rust-owned post-fader deck gains heard on the main output. If the browser cannot select a separate audio output, the headphone controls stay disabled and the existing master playback route is unchanged.
+Headphone cueing is deliberately pre-fader: each deck's tone chain is applied before the signal splits into the post-fader master branch and pre-fader cue branch. The selected cue therefore hears the same EQ/filter state as the deck while still bypassing deck level and crossfader. The optional Master contribution follows the same Rust-owned post-fader deck gains heard on the main output. If the browser cannot select a separate audio output, the headphone controls stay disabled and the existing master playback route is unchanged.
 
 Reusable ownership remains explicit:
 
-- BPM, beat-grid, downbeat, related rhythm analysis, and reusable policy-neutral playback/DJ calculations come from `audio-analysis` rather than being reimplemented here;
+- BPM, beat-grid, downbeat, related rhythm analysis, reusable policy-neutral playback/DJ calculations, and generic DSP/filter math come from shared audio/math layers rather than being reimplemented here;
 - collaborative lobby/signaling should integrate through `multiplayer-setup-service` rather than becoming part of the mixer core.
 
 ## Build and validate
@@ -65,8 +66,8 @@ The generated static site is written to `_site/` and can be served by any local 
 4. Tempo, beat loops, and BPM sync — done
 5. Phase sync, quantized hot cues, and beat-jump transport — done
 6. Headphone cue/master routing where browser APIs allow it — done
-7. Browser-local multi-file/folder music collection — current slice
-8. Mixer EQ/filter controls with deterministic parameter semantics
-9. ZIP/playlist library import plus reusable cached track-analysis metadata
+7. Browser-local multi-file/folder music collection — done
+8. Mixer EQ/filter controls with deterministic parameter semantics — done
+9. ZIP/playlist library import plus reusable cached track-analysis metadata — current slice
 10. Multiplayer sessions through `multiplayer-setup-service`
 11. Shared-session authority, synchronization, optional asset transfer, and collaborative mixing
