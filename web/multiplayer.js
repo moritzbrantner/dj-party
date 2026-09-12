@@ -42,8 +42,8 @@ export function normalizeMultiplayerApiBase(value, { pageProtocol = "https:" } =
   if (url.protocol === "http:" && !loopback) {
     throw new Error("Non-local multiplayer setup services must use HTTPS");
   }
-  if (pageProtocol === "https:" && url.protocol === "http:" && !loopback) {
-    throw new Error("An HTTPS DJ Party page cannot use an insecure multiplayer service");
+  if (pageProtocol === "https:" && url.protocol === "http:") {
+    throw new Error("An HTTPS DJ Party page cannot use an HTTP multiplayer service");
   }
 
   return url.origin;
@@ -115,6 +115,7 @@ export class DjPartyMultiplayerSession extends EventTarget {
     this.abortController = null;
     this.state = "idle";
     this.turnAvailable = null;
+    this.setupGeneration = 0;
   }
 
   async host(maxParticipants = 4) {
@@ -147,6 +148,7 @@ export class DjPartyMultiplayerSession extends EventTarget {
 
   close() {
     const session = this.session;
+    this.setupGeneration += 1;
     this.abortController?.abort();
     this.abortController = null;
     this.session = null;
@@ -158,10 +160,14 @@ export class DjPartyMultiplayerSession extends EventTarget {
   }
 
   async #start(setup) {
+    if (this.state === "closed") {
+      throw new Error("Multiplayer session is closed");
+    }
     if (this.session) {
       throw new Error("A multiplayer session is already active");
     }
 
+    const generation = ++this.setupGeneration;
     this.state = "connecting";
     this.turnAvailable = null;
     this.#emit("change", this.snapshot());
@@ -169,6 +175,7 @@ export class DjPartyMultiplayerSession extends EventTarget {
     let session = null;
     try {
       const module = await this.loadClient();
+      this.#assertSetupActive(generation);
       if (typeof module?.LobbySession !== "function") {
         throw new Error("The multiplayer setup browser client is incompatible");
       }
@@ -181,6 +188,7 @@ export class DjPartyMultiplayerSession extends EventTarget {
       this.session = session;
       this.#wireSession(session);
       const lobby = await setup(session);
+      this.#assertSetupActive(generation);
       if (this.session !== session) {
         throw new Error("Multiplayer session setup was cancelled");
       }
@@ -189,6 +197,7 @@ export class DjPartyMultiplayerSession extends EventTarget {
       void this.#configureTurn(module.refreshTurnIceServers, session);
       return lobby;
     } catch (error) {
+      const cancelled = this.setupGeneration !== generation || this.state === "closed";
       if (this.session === session) {
         this.abortController?.abort();
         this.abortController = null;
@@ -197,9 +206,17 @@ export class DjPartyMultiplayerSession extends EventTarget {
       session?.close();
       this.compatiblePeers.clear();
       this.turnAvailable = null;
-      this.state = "idle";
-      this.#emit("change", this.snapshot());
+      if (!cancelled) {
+        this.state = "idle";
+        this.#emit("change", this.snapshot());
+      }
       throw error;
+    }
+  }
+
+  #assertSetupActive(generation) {
+    if (this.setupGeneration !== generation || this.state === "closed") {
+      throw new Error("Multiplayer session setup was cancelled");
     }
   }
 
@@ -428,6 +445,7 @@ class MultiplayerSessionUi {
       return;
     }
 
+    let controller = null;
     try {
       const apiBase = normalizeMultiplayerApiBase(this.apiInput.value, { pageProtocol: window.location.protocol });
       this.apiInput.value = apiBase;
@@ -436,7 +454,7 @@ class MultiplayerSessionUi {
       this.status.textContent = "Connecting…";
       this.updateTopbar("Connecting…");
 
-      const controller = new DjPartyMultiplayerSession({ apiBase });
+      controller = new DjPartyMultiplayerSession({ apiBase });
       this.controller = controller;
       controller.addEventListener("change", (event) => this.renderSession(event.detail));
       controller.addEventListener("error", (event) => this.renderError(event.detail?.error));
@@ -453,6 +471,9 @@ class MultiplayerSessionUi {
       this.persistConfiguration();
       this.renderSession(controller.snapshot());
     } catch (error) {
+      if (controller && this.controller !== controller) {
+        return;
+      }
       this.controller?.close();
       this.controller = null;
       this.setBusy(false);
