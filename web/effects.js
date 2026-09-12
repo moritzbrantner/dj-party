@@ -100,6 +100,8 @@ export class DeckEffects {
     this.dryGainNode = context.createGain();
     this.wetGainNode = context.createGain();
     this.outputNode = context.createGain();
+    this.dryGainNode.gain.value = 1;
+    this.wetGainNode.gain.value = 0;
 
     sourceNode.connect(this.lowNode);
     this.lowNode.connect(this.midNode);
