@@ -43,15 +43,42 @@ test("analysis cache records round-trip without sharing transferred array storag
 });
 
 test("stale analysis namespaces fail closed", () => {
-  const stale = {
-    id: "old",
-    namespace: "old-analysis",
-    extrema: new Float32Array([0, 0]),
-    bpm: 120,
-    confidence: 1,
-    beats: new Float64Array([0]),
-    downbeats: new Float64Array([0]),
-  };
-
+  const stale = validRecord();
+  stale.namespace = "old-analysis";
   assert.equal(analysisMessageFromCache(stale, "b", 1), null);
 });
+
+test("malformed cached waveform and beat grids fail closed", () => {
+  const invalidWaveform = validRecord();
+  invalidWaveform.extrema = new Float32Array([-1, Number.NaN]);
+  assert.equal(analysisMessageFromCache(invalidWaveform, "a", 1), null);
+
+  const reversedWaveform = validRecord();
+  reversedWaveform.extrema = new Float32Array([0.8, -0.2]);
+  assert.equal(analysisMessageFromCache(reversedWaveform, "a", 1), null);
+
+  const unsortedBeats = validRecord();
+  unsortedBeats.beats = new Float64Array([0.5, 1.5, 1.0]);
+  assert.equal(analysisMessageFromCache(unsortedBeats, "a", 1), null);
+
+  const infiniteDownbeats = validRecord();
+  infiniteDownbeats.downbeats = new Float64Array([0.5, Number.POSITIVE_INFINITY]);
+  assert.equal(analysisMessageFromCache(infiniteDownbeats, "a", 1), null);
+
+  const staleHorizon = validRecord();
+  staleHorizon.beats = new Float64Array([0.5, 901]);
+  assert.equal(analysisMessageFromCache(staleHorizon, "a", 1), null);
+});
+
+function validRecord() {
+  return {
+    id: "cache:one",
+    namespace: ANALYSIS_CACHE_NAMESPACE,
+    extrema: new Float32Array([-1, 1, -0.5, 0.5]),
+    bpm: 128,
+    confidence: 0.92,
+    beats: new Float64Array([0.5, 1.0, 1.5]),
+    downbeats: new Float64Array([0.5]),
+    analysisLimited: false,
+  };
+}
