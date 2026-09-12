@@ -84,13 +84,12 @@ test("guest requests are host-sequenced and duplicate request numbers are ignore
   assert.equal(transport.broadcasts[0].sequence, 1);
 });
 
-test("guest accepts canonical commands only from the host and in increasing order", () => {
+test("guest ignores canonical deltas until a host snapshot establishes convergence", () => {
   const transport = new FakeTransport({ participantId: "GUEST", hostParticipantId: "HOST", compatiblePeerIds: ["HOST"] });
   const mixer = new FakeMixer();
   const coordinator = new SharedSessionCoordinator();
   coordinator.registerMixer(mixer);
   coordinator.attachTransport(transport);
-  transport.sent.length = 0;
 
   const canonical = {
     type: "dj-party/shared/command",
@@ -100,11 +99,11 @@ test("guest accepts canonical commands only from the host and in increasing orde
   };
   transport.application("OTHER", canonical);
   transport.application("HOST", canonical);
-  transport.application("HOST", canonical);
 
-  assert.deepEqual(mixer.commands, [{ kind: "tempo", deck: "a", percent: -4.5 }]);
-  assert.equal(coordinator.snapshot().canonicalSequence, 2);
-  assert.equal(coordinator.snapshot().ready, false, "a canonical delta alone is not a full state convergence proof");
+  assert.deepEqual(mixer.commands, []);
+  assert.equal(coordinator.snapshot().canonicalSequence, 0);
+  assert.equal(coordinator.snapshot().ready, false);
+  assert.equal(transport.sent.filter((entry) => entry.data.type === "dj-party/shared/snapshot-request").length, 1);
 });
 
 test("guest local changes become requests after requesting the host snapshot", () => {
@@ -137,6 +136,24 @@ test("guest cannot submit until the host is a verified peer", () => {
 
   assert.equal(coordinator.submitLocalCommand({ kind: "crossfader", position: 0.2 }), false);
   assert.deepEqual(transport.sent, []);
+});
+
+test("guest send failure fails closed instead of throwing from the local control path", () => {
+  const transport = new FakeTransport({ participantId: "GUEST", hostParticipantId: "HOST", compatiblePeerIds: ["HOST"] });
+  const coordinator = new SharedSessionCoordinator();
+  coordinator.registerMixer(new FakeMixer());
+  coordinator.attachTransport(transport);
+  transport.application("HOST", {
+    type: "dj-party/shared/snapshot",
+    protocol: SHARED_SESSION_PROTOCOL,
+    sequence: 0,
+    state: sharedState(),
+  });
+  assert.equal(coordinator.snapshot().ready, true);
+
+  transport.failPeers.add("HOST");
+  assert.equal(coordinator.submitLocalCommand({ kind: "crossfader", position: 0.3 }), false);
+  assert.equal(coordinator.snapshot().ready, false);
 });
 
 test("guest requests canonical state when its mixer registers after transport setup", () => {
@@ -179,7 +196,92 @@ test("host answers snapshot requests and sends snapshots to newly compatible pee
   assert.deepEqual(transport.sent[1].data.state, sharedState());
 });
 
-test("guest applies host snapshots, becomes ready, and rejects stale snapshots", () => {
+test("guest accepts contiguous canonical commands after the host snapshot", () => {
+  const transport = new FakeTransport({ participantId: "GUEST", hostParticipantId: "HOST", compatiblePeerIds: ["HOST"] });
+  const mixer = new FakeMixer();
+  const coordinator = new SharedSessionCoordinator();
+  coordinator.registerMixer(mixer);
+  coordinator.attachTransport(transport);
+
+  transport.application("HOST", {
+    type: "dj-party/shared/snapshot",
+    protocol: SHARED_SESSION_PROTOCOL,
+    sequence: 3,
+    state: sharedState(),
+  });
+  const canonical = {
+    type: "dj-party/shared/command",
+    protocol: SHARED_SESSION_PROTOCOL,
+    sequence: 4,
+    command: { kind: "tempo", deck: "a", percent: -4.5 },
+  };
+  transport.application("OTHER", canonical);
+  transport.application("HOST", canonical);
+  transport.application("HOST", canonical);
+
+  assert.deepEqual(mixer.commands, [{ kind: "tempo", deck: "a", percent: -4.5 }]);
+  assert.equal(coordinator.snapshot().canonicalSequence, 4);
+  assert.equal(coordinator.snapshot().ready, true);
+});
+
+test("canonical sequence gaps drop readiness and require a fresh host snapshot", () => {
+  const transport = new FakeTransport({ participantId: "GUEST", hostParticipantId: "HOST", compatiblePeerIds: ["HOST"] });
+  const mixer = new FakeMixer();
+  const coordinator = new SharedSessionCoordinator();
+  coordinator.registerMixer(mixer);
+  coordinator.attachTransport(transport);
+  transport.application("HOST", {
+    type: "dj-party/shared/snapshot",
+    protocol: SHARED_SESSION_PROTOCOL,
+    sequence: 1,
+    state: sharedState(),
+  });
+  transport.sent.length = 0;
+
+  transport.application("HOST", {
+    type: "dj-party/shared/command",
+    protocol: SHARED_SESSION_PROTOCOL,
+    sequence: 3,
+    command: { kind: "crossfader", position: 0.75 },
+  });
+
+  assert.deepEqual(mixer.commands, []);
+  assert.equal(coordinator.snapshot().canonicalSequence, 1);
+  assert.equal(coordinator.snapshot().ready, false);
+  assert.deepEqual(transport.sent, [
+    {
+      peerId: "HOST",
+      data: { type: "dj-party/shared/snapshot-request", protocol: SHARED_SESSION_PROTOCOL },
+    },
+  ]);
+
+  transport.application("HOST", {
+    type: "dj-party/shared/command",
+    protocol: SHARED_SESSION_PROTOCOL,
+    sequence: 4,
+    command: { kind: "deck-level", deck: "a", level: 0.5 },
+  });
+  assert.equal(transport.sent.length, 1, "only one recovery snapshot request may be outstanding");
+  assert.deepEqual(mixer.commands, []);
+
+  transport.application("HOST", {
+    type: "dj-party/shared/snapshot",
+    protocol: SHARED_SESSION_PROTOCOL,
+    sequence: 4,
+    state: sharedState(),
+  });
+  transport.application("HOST", {
+    type: "dj-party/shared/command",
+    protocol: SHARED_SESSION_PROTOCOL,
+    sequence: 5,
+    command: { kind: "deck-level", deck: "a", level: 0.5 },
+  });
+  assert.equal(coordinator.snapshot().ready, true);
+  assert.equal(coordinator.snapshot().canonicalSequence, 5);
+  assert.deepEqual(mixer.commands, [{ kind: "deck-level", deck: "a", level: 0.5 }]);
+});
+
+test("guest applies host snapshots and rejects stale snapshots", () => {
   const transport = new FakeTransport({ participantId: "GUEST", hostParticipantId: "HOST", compatiblePeerIds: ["HOST"] });
   const mixer = new FakeMixer();
   const coordinator = new SharedSessionCoordinator();
@@ -235,6 +337,7 @@ class FakeTransport extends EventTarget {
     };
     this.sent = [];
     this.broadcasts = [];
+    this.failPeers = new Set();
   }
 
   snapshot() {
@@ -242,6 +345,9 @@ class FakeTransport extends EventTarget {
   }
 
   sendApplicationReliable(peerId, data) {
+    if (this.failPeers.has(peerId)) {
+      throw new Error(`peer ${peerId} vanished`);
+    }
     this.sent.push({ peerId, data });
   }
 
