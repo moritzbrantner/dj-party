@@ -1,9 +1,22 @@
 export const MULTIPLAYER_CLIENT_SOURCE_COMMIT = "556f1aa2ac889acffd5b2b27163fca10f1901793";
-export const MULTIPLAYER_CLIENT_MODULE_URL = `https://cdn.jsdelivr.net/gh/moritzbrantner/multiplayer-setup-service@${MULTIPLAYER_CLIENT_SOURCE_COMMIT}/web/lobby-session.js`;
+const MULTIPLAYER_CLIENT_BASE_URL = `https://cdn.jsdelivr.net/gh/moritzbrantner/multiplayer-setup-service@${MULTIPLAYER_CLIENT_SOURCE_COMMIT}/web`;
+export const MULTIPLAYER_CLIENT_MODULE_URL = `${MULTIPLAYER_CLIENT_BASE_URL}/lobby-session.js`;
+export const MULTIPLAYER_TURN_MODULE_URL = `${MULTIPLAYER_CLIENT_BASE_URL}/turn-credentials.js`;
 export const DJ_PARTY_SESSION_PROTOCOL = 1;
 
 const LOCAL_SIGNALING_API = "http://127.0.0.1:8787";
 const HELLO_TYPE = "dj-party/session-hello";
+
+async function loadPinnedMultiplayerClient() {
+  const [sessionModule, turnModule] = await Promise.all([
+    import(MULTIPLAYER_CLIENT_MODULE_URL),
+    import(MULTIPLAYER_TURN_MODULE_URL),
+  ]);
+  return {
+    LobbySession: sessionModule.LobbySession,
+    refreshTurnIceServers: turnModule.refreshTurnIceServers,
+  };
+}
 
 export function normalizeMultiplayerApiBase(value, { pageProtocol = "https:" } = {}) {
   const raw = String(value ?? "").trim();
@@ -90,7 +103,7 @@ export function isDjPartySessionHello(value) {
 export class DjPartyMultiplayerSession extends EventTarget {
   constructor({
     apiBase,
-    loadClient = () => import(MULTIPLAYER_CLIENT_MODULE_URL),
+    loadClient = loadPinnedMultiplayerClient,
   } = {}) {
     super();
     this.apiBase = normalizeMultiplayerApiBase(apiBase, {
@@ -101,6 +114,7 @@ export class DjPartyMultiplayerSession extends EventTarget {
     this.compatiblePeers = new Set();
     this.abortController = null;
     this.state = "idle";
+    this.turnAvailable = null;
   }
 
   async host(maxParticipants = 4) {
@@ -127,6 +141,7 @@ export class DjPartyMultiplayerSession extends EventTarget {
       participantCount: session?.participants instanceof Set ? session.participants.size : 0,
       readyPeerIds: typeof session?.readyPeerIds === "function" ? session.readyPeerIds() : [],
       compatiblePeerIds: [...this.compatiblePeers].sort(),
+      turnAvailable: this.turnAvailable,
     };
   }
 
@@ -136,6 +151,7 @@ export class DjPartyMultiplayerSession extends EventTarget {
     this.abortController = null;
     this.session = null;
     this.compatiblePeers.clear();
+    this.turnAvailable = null;
     this.state = "closed";
     session?.close();
     this.#emit("change", this.snapshot());
@@ -147,6 +163,7 @@ export class DjPartyMultiplayerSession extends EventTarget {
     }
 
     this.state = "connecting";
+    this.turnAvailable = null;
     this.#emit("change", this.snapshot());
 
     let session = null;
@@ -169,6 +186,7 @@ export class DjPartyMultiplayerSession extends EventTarget {
       }
       this.state = "connected";
       this.#emit("change", this.snapshot());
+      void this.#configureTurn(module.refreshTurnIceServers, session);
       return lobby;
     } catch (error) {
       if (this.session === session) {
@@ -178,9 +196,36 @@ export class DjPartyMultiplayerSession extends EventTarget {
       }
       session?.close();
       this.compatiblePeers.clear();
+      this.turnAvailable = null;
       this.state = "idle";
       this.#emit("change", this.snapshot());
       throw error;
+    }
+  }
+
+  async #configureTurn(refreshTurnIceServers, session) {
+    if (typeof refreshTurnIceServers !== "function") {
+      if (this.session === session) {
+        this.turnAvailable = false;
+        this.#emit("change", this.snapshot());
+      }
+      return;
+    }
+
+    try {
+      await refreshTurnIceServers(session);
+      if (this.session !== session) {
+        return;
+      }
+      this.turnAvailable = true;
+      this.#emit("change", this.snapshot());
+    } catch (error) {
+      if (this.session !== session) {
+        return;
+      }
+      this.turnAvailable = false;
+      this.#emit("turn-unavailable", { error });
+      this.#emit("change", this.snapshot());
     }
   }
 
@@ -395,6 +440,11 @@ class MultiplayerSessionUi {
       this.controller = controller;
       controller.addEventListener("change", (event) => this.renderSession(event.detail));
       controller.addEventListener("error", (event) => this.renderError(event.detail?.error));
+      controller.addEventListener("turn-unavailable", () => {
+        if (this.status.textContent === "Network session active") {
+          this.status.textContent = "Network session active · direct ICE only";
+        }
+      });
       const lobby = await setup(controller);
       if (this.controller !== controller) {
         return;
@@ -446,7 +496,8 @@ class MultiplayerSessionUi {
 
     const ready = snapshot.readyPeerIds.length;
     const compatible = snapshot.compatiblePeerIds.length;
-    this.peerStatus.textContent = `${ready} peer ${ready === 1 ? "link" : "links"} ready · ${compatible} DJ Party ${compatible === 1 ? "peer" : "peers"} verified`;
+    const relay = snapshot.turnAvailable === true ? " · TURN fallback ready" : snapshot.turnAvailable === false ? " · direct ICE only" : "";
+    this.peerStatus.textContent = `${ready} peer ${ready === 1 ? "link" : "links"} ready · ${compatible} DJ Party ${compatible === 1 ? "peer" : "peers"} verified${relay}`;
     this.status.textContent = snapshot.state === "connected" ? "Network session active" : `Network: ${snapshot.state}`;
     this.updateTopbar(snapshot.state === "connected" ? "Network session" : `Network: ${snapshot.state}`);
     this.leaveButton.disabled = false;
