@@ -1,3 +1,10 @@
+import {
+  analysisCacheIdForBytes,
+  analysisMessageFromCache,
+  cacheRecordFromAnalysis,
+  readCachedTrackAnalysis,
+  writeCachedTrackAnalysis,
+} from "./analysis-cache.js";
 import init, { analyze_rhythm, waveform_extrema } from "./pkg/dj_party.js";
 
 const ready = init();
@@ -12,6 +19,22 @@ self.addEventListener("message", async (event) => {
 
   try {
     await ready;
+
+    let cacheId = null;
+    try {
+      const fingerprint = await analysisCacheIdForBytes(samples.buffer);
+      cacheId = fingerprint ? `${fingerprint}:sr${sampleRate}` : null;
+      if (cacheId) {
+        const cached = analysisMessageFromCache(await readCachedTrackAnalysis(cacheId), deckId, requestId);
+        if (cached) {
+          self.postMessage(cached, [cached.extrema.buffer, cached.beats.buffer, cached.downbeats.buffer]);
+          return;
+        }
+      }
+    } catch (cacheError) {
+      console.warn("Track analysis cache lookup failed", cacheError);
+    }
+
     const extrema = waveform_extrema(samples, WAVEFORM_POINTS);
     const maxAnalysisSamples = Math.max(1, Math.floor(sampleRate * MAX_ANALYSIS_SECONDS));
     const analysisLimited = samples.length > maxAnalysisSamples;
@@ -29,8 +52,20 @@ self.addEventListener("message", async (event) => {
       beats,
       downbeats,
       analysisLimited,
+      cached: false,
     };
     analysis.free();
+
+    if (cacheId) {
+      const record = cacheRecordFromAnalysis(cacheId, result);
+      if (record) {
+        try {
+          await writeCachedTrackAnalysis(record);
+        } catch (cacheError) {
+          console.warn("Track analysis cache write failed", cacheError);
+        }
+      }
+    }
 
     self.postMessage(result, [extrema.buffer, beats.buffer, downbeats.buffer]);
   } catch (error) {
