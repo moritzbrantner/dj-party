@@ -38,7 +38,7 @@ test("local mixer inputs submit bounded shared commands", () => {
   ]);
 });
 
-test("programmatic sync, phase-sync, track load, and EQ reset changes are submitted", () => {
+test("programmatic sync, track load, drag-drop load, and EQ reset changes are submitted", () => {
   const coordinator = new FakeCoordinator();
   const mixer = new CollaborativeMixerControls({ coordinator });
   mixer.controls = fakeControls();
@@ -53,6 +53,9 @@ test("programmatic sync, phase-sync, track load, and EQ reset changes are submit
   deck.fileInput.addEventListener("change", () => {
     deck.tempo.value = "0.0";
   });
+  deck.dropZone.addEventListener("drop", () => {
+    deck.tempo.value = "0.0";
+  });
   deck.toneResetButton.addEventListener("click", () => {
     for (const control of Object.values(deck.tone)) {
       control.value = "0";
@@ -64,12 +67,15 @@ test("programmatic sync, phase-sync, track load, and EQ reset changes are submit
   deck.syncButton.dispatchEvent(new Event("click"));
   deck.phaseSyncButton.dispatchEvent(new Event("click"));
   deck.fileInput.dispatchEvent(new Event("change"));
+  deck.tempo.value = "7.0";
+  deck.dropZone.dispatchEvent(new Event("drop"));
   deck.tone.low.value = "42";
   deck.toneResetButton.dispatchEvent(new Event("click"));
 
   assert.deepEqual(coordinator.commands, [
     { kind: "tempo", deck: "a", percent: 4.5 },
     { kind: "tempo", deck: "a", percent: -2 },
+    { kind: "tempo", deck: "a", percent: 0 },
     { kind: "tempo", deck: "a", percent: 0 },
     { kind: "tone", deck: "a", tone: { low: 0, mid: 0, high: 0, filter: 0 } },
   ]);
@@ -185,6 +191,7 @@ function fakeDeck() {
     syncButton: new FakeControl(),
     phaseSyncButton: new FakeControl(),
     fileInput: new FakeControl(),
+    dropZone: new FakeControl(),
     toneResetButton: new FakeControl(),
     tone: {
       low: new FakeControl("0"),
