@@ -65,6 +65,7 @@ export class SharedSessionCoordinator extends EventTarget {
     this.lastCanonicalSequence = 0;
     this.localRequestSequence = 0;
     this.lastRequestSequenceByPeer = new Map();
+    this.snapshotRequestPending = false;
     this.ready = false;
   }
 
@@ -82,6 +83,7 @@ export class SharedSessionCoordinator extends EventTarget {
     return () => {
       if (this.mixer === adapter) {
         this.mixer = null;
+        this.snapshotRequestPending = false;
         this.ready = false;
         this.#emitChange();
       }
@@ -99,6 +101,7 @@ export class SharedSessionCoordinator extends EventTarget {
     this.lastCanonicalSequence = 0;
     this.localRequestSequence = 0;
     this.lastRequestSequenceByPeer.clear();
+    this.snapshotRequestPending = false;
     this.ready = false;
 
     const signal = this.transportAbort.signal;
@@ -121,6 +124,7 @@ export class SharedSessionCoordinator extends EventTarget {
     this.lastCanonicalSequence = 0;
     this.localRequestSequence = 0;
     this.lastRequestSequenceByPeer.clear();
+    this.snapshotRequestPending = false;
     this.ready = false;
     this.#emitChange();
   }
@@ -207,10 +211,13 @@ export class SharedSessionCoordinator extends EventTarget {
     }
     const state = this.transport.snapshot();
     if (state.state !== "connected") {
+      this.snapshotRequestPending = false;
       this.ready = false;
     } else if (this.#isHost()) {
+      this.snapshotRequestPending = false;
       this.ready = Boolean(this.mixer);
     } else if (!state.compatiblePeerIds?.includes(state.hostParticipantId)) {
+      this.snapshotRequestPending = false;
       this.ready = false;
     } else if (!this.ready && this.mixer) {
       this.#requestSnapshot();
@@ -225,13 +232,14 @@ export class SharedSessionCoordinator extends EventTarget {
     if (this.#isHost()) {
       this.#sendSnapshot(peerId);
     } else if (peerId === this.transport.snapshot()?.hostParticipantId) {
+      this.snapshotRequestPending = false;
       this.#requestSnapshot();
     }
     this.#emitChange();
   }
 
   #requestSnapshot() {
-    if (!this.transport || !this.mixer || this.#isHost()) {
+    if (!this.transport || !this.mixer || this.#isHost() || this.snapshotRequestPending) {
       return false;
     }
     const state = this.transport.snapshot();
@@ -243,6 +251,7 @@ export class SharedSessionCoordinator extends EventTarget {
       type: SNAPSHOT_REQUEST_TYPE,
       protocol: SHARED_SESSION_PROTOCOL,
     });
+    this.snapshotRequestPending = true;
     return true;
   }
 
@@ -306,7 +315,6 @@ export class SharedSessionCoordinator extends EventTarget {
       }
       this.lastCanonicalSequence = sequence;
       this.mixer.applyCommand(command, { source: "canonical", peerId, sequence });
-      this.ready = true;
       this.#emitChange();
       return;
     }
@@ -319,6 +327,7 @@ export class SharedSessionCoordinator extends EventTarget {
       }
       this.lastCanonicalSequence = sequence;
       this.mixer.applySnapshot(sharedState, { source: "snapshot", peerId, sequence });
+      this.snapshotRequestPending = false;
       this.ready = true;
       this.#emitChange();
     }
