@@ -70,6 +70,8 @@ export function normalizeLobbyCode(value) {
 
 export function multiplayerInviteUrl(locationLike, { apiBase, lobbyCode }) {
   const url = new URL(locationLike.href ?? String(locationLike));
+  url.search = "";
+  url.hash = "";
   url.searchParams.set("api", normalizeMultiplayerApiBase(apiBase, { pageProtocol: url.protocol }));
   url.searchParams.set("lobby", normalizeLobbyCode(lobbyCode));
   return url;
@@ -362,6 +364,7 @@ class MultiplayerSessionUi {
     this.joinButton?.addEventListener("click", () => void this.startJoin());
     this.leaveButton?.addEventListener("click", () => this.leave());
     this.copyButton?.addEventListener("click", () => void this.copyInvite());
+    window.addEventListener("beforeunload", () => this.controller?.close(), { once: true });
   }
 
   async startHost() {
@@ -476,13 +479,17 @@ class MultiplayerSessionUi {
       try {
         url.searchParams.set("api", normalizeMultiplayerApiBase(api, { pageProtocol: url.protocol }));
       } catch {
-        url.searchParams.set("api", api);
+        url.searchParams.delete("api");
       }
     } else {
       url.searchParams.delete("api");
     }
     if (lobby) {
-      url.searchParams.set("lobby", lobby);
+      try {
+        url.searchParams.set("lobby", normalizeLobbyCode(lobby));
+      } catch {
+        url.searchParams.delete("lobby");
+      }
     } else {
       url.searchParams.delete("lobby");
     }
