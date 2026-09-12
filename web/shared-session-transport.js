@@ -1,13 +1,13 @@
 import { sharedSession } from "./shared-session.js";
 
 export function installSharedSessionTransport(multiplayerUi) {
-  if (!multiplayerUi || typeof multiplayerUi.start !== "function" || typeof multiplayerUi.leave !== "function") {
+  if (!multiplayerUi || typeof multiplayerUi.addEventListener !== "function") {
     return null;
   }
 
   let bridge = null;
-  const originalStart = multiplayerUi.start.bind(multiplayerUi);
-  const originalLeave = multiplayerUi.leave.bind(multiplayerUi);
+  const abortController = new AbortController();
+  const signal = abortController.signal;
 
   const detach = () => {
     bridge?.close();
@@ -15,23 +15,32 @@ export function installSharedSessionTransport(multiplayerUi) {
     sharedSession.detachTransport();
   };
 
-  multiplayerUi.start = async (setup) => {
-    await originalStart(setup);
-    detach();
-    if (multiplayerUi.controller?.session) {
-      bridge = new MultiplayerSharedTransport(multiplayerUi.controller);
+  multiplayerUi.addEventListener(
+    "controller-ready",
+    (event) => {
+      detach();
+      const controller = event.detail?.controller;
+      if (!controller?.session) {
+        return;
+      }
+      bridge = new MultiplayerSharedTransport(controller);
       sharedSession.attachTransport(bridge);
       bridge.emitInitialCompatiblePeers();
-    }
-  };
+    },
+    { signal },
+  );
 
-  multiplayerUi.leave = () => {
-    detach();
-    originalLeave();
-  };
+  multiplayerUi.addEventListener("controller-closed", detach, { signal });
 
   if (typeof window !== "undefined") {
-    window.addEventListener("beforeunload", detach, { once: true });
+    window.addEventListener(
+      "beforeunload",
+      () => {
+        abortController.abort();
+        detach();
+      },
+      { once: true },
+    );
   }
 
   const note = typeof document === "undefined" ? null : document.querySelector(".multiplayer-note");
@@ -40,7 +49,13 @@ export function installSharedSessionTransport(multiplayerUi) {
       "The setup service remains signaling/transport only. Verified DJ Party peers synchronize bounded mixer commands through a host-sequenced application protocol; tracks and content bytes remain local.";
   }
 
-  return { detach };
+  return {
+    detach,
+    close() {
+      abortController.abort();
+      detach();
+    },
+  };
 }
 
 export class MultiplayerSharedTransport extends EventTarget {
