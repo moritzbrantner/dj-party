@@ -5,6 +5,7 @@ import {
   DJ_PARTY_SESSION_PROTOCOL,
   MULTIPLAYER_CLIENT_MODULE_URL,
   MULTIPLAYER_CLIENT_SOURCE_COMMIT,
+  MULTIPLAYER_TURN_MODULE_URL,
   DjPartyMultiplayerSession,
   isDjPartySessionHello,
   multiplayerApiFromLocation,
@@ -22,10 +23,12 @@ if (typeof globalThis.CustomEvent !== "function") {
   };
 }
 
-test("multiplayer browser client is pinned to an exact service commit", () => {
+test("multiplayer browser helpers are pinned to one exact service commit", () => {
   assert.match(MULTIPLAYER_CLIENT_SOURCE_COMMIT, /^[0-9a-f]{40}$/);
   assert.ok(MULTIPLAYER_CLIENT_MODULE_URL.includes(`@${MULTIPLAYER_CLIENT_SOURCE_COMMIT}/`));
+  assert.ok(MULTIPLAYER_TURN_MODULE_URL.includes(`@${MULTIPLAYER_CLIENT_SOURCE_COMMIT}/`));
   assert.ok(MULTIPLAYER_CLIENT_MODULE_URL.endsWith("/web/lobby-session.js"));
+  assert.ok(MULTIPLAYER_TURN_MODULE_URL.endsWith("/web/turn-credentials.js"));
 });
 
 test("service URL normalization allows HTTPS and loopback HTTP only", () => {
@@ -77,8 +80,9 @@ test("DJ Party hello is explicitly versioned", () => {
   assert.equal(isDjPartySessionHello({ type: "mixer-state", protocol: DJ_PARTY_SESSION_PROTOCOL }), false);
 });
 
-test("session adapter delegates setup to the reusable service client without enabling content sharing", async () => {
+test("session adapter delegates setup and TURN fallback to reusable service helpers", async () => {
   let created = null;
+  let turnSession = null;
   const controller = new DjPartyMultiplayerSession({
     apiBase: "https://multi.example.com",
     loadClient: async () => ({
@@ -88,17 +92,24 @@ test("session adapter delegates setup to the reusable service client without ena
           created = this;
         }
       },
+      refreshTurnIceServers: async (session) => {
+        turnSession = session;
+        return { iceServers: [{ urls: ["turns:turn.example.com"] }], expiresAt: Date.now() + 60_000 };
+      },
     }),
   });
 
   const lobby = await controller.host(4);
+  await Promise.resolve();
   assert.equal(lobby.displayCode, "0123-ABCD-EFGH");
   assert.deepEqual(created.options, {
     apiBase: "https://multi.example.com",
     topology: "mesh",
     contentSharing: false,
   });
+  assert.equal(turnSession, created);
   assert.equal(controller.snapshot().state, "connected");
+  assert.equal(controller.snapshot().turnAvailable, true);
 
   created.ready.add("PEER0001");
   created.emit("peer-ready", { peerId: "PEER0001" });
@@ -125,6 +136,24 @@ test("session adapter delegates setup to the reusable service client without ena
   controller.close();
   assert.equal(created.closed, true);
   assert.equal(controller.snapshot().state, "closed");
+});
+
+test("TURN credential failure keeps an established direct session usable", async () => {
+  const controller = new DjPartyMultiplayerSession({
+    apiBase: "https://multi.example.com",
+    loadClient: async () => ({
+      LobbySession: FakeLobbySession,
+      refreshTurnIceServers: async () => {
+        throw new Error("TURN is not configured");
+      },
+    }),
+  });
+
+  await controller.host(2);
+  await Promise.resolve();
+  assert.equal(controller.snapshot().state, "connected");
+  assert.equal(controller.snapshot().turnAvailable, false);
+  controller.close();
 });
 
 class FakeLobbySession extends EventTarget {
