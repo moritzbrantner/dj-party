@@ -110,7 +110,6 @@ export class CollaborativeMixerControls {
       tempoPercent: Number(deck.tempo.value),
       keyLock: deck.keyLock.checked,
       tone: Object.fromEntries(TONE_KEYS.map((key) => [key, Number(deck.tone[key].value)])),
-      transport: { position: 0, playing: false, contentId: null },
     };
   }
 
