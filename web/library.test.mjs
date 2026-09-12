@@ -16,6 +16,14 @@ test("track ids are stable for the same file identity and change for distinct fi
   assert.notEqual(trackIdForFile(base), trackIdForFile({ ...base, lastModified: 100 }));
 });
 
+test("explicit archive paths distinguish otherwise identical files without changing normal identities", () => {
+  const base = { name: "track.wav", size: 1234, lastModified: 99 };
+  const ordinary = trackIdForFile(base);
+  assert.equal(ordinary, trackIdForFile({ ...base }));
+  assert.notEqual(trackIdForFile(base, "set-a/track.wav"), trackIdForFile(base, "set-b/track.wav"));
+  assert.equal(trackIdForFile(base, "set-a\\track.wav"), trackIdForFile(base, "set-a/track.wav"));
+});
+
 test("file sizes are formatted for collection metadata", () => {
   assert.equal(formatFileSize(0), "0 B");
   assert.equal(formatFileSize(1024), "1.00 KB");
