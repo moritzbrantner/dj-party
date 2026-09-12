@@ -46,14 +46,16 @@ test("local pages default to the local service while hosted pages fail closed wi
 });
 
 test("invite URLs carry only service and public lobby code state", () => {
-  const invite = multiplayerInviteUrl("https://example.github.io/dj-party/?other=1", {
+  const invite = multiplayerInviteUrl("https://example.github.io/dj-party/?other=1#private-fragment", {
     apiBase: "https://multi.example.com",
     lobbyCode: "0123-abcd-efgh",
   });
   assert.equal(invite.searchParams.get("api"), "https://multi.example.com");
   assert.equal(invite.searchParams.get("lobby"), "0123-ABCD-EFGH");
-  assert.equal(invite.searchParams.get("other"), "1");
+  assert.equal(invite.searchParams.has("other"), false);
   assert.equal(invite.searchParams.has("token"), false);
+  assert.equal(invite.hash, "");
+  assert.deepEqual([...invite.searchParams.keys()].sort(), ["api", "lobby"]);
 });
 
 test("lobby code validation rejects path-like or arbitrary input", () => {
