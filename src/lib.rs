@@ -8,8 +8,10 @@ use audio_analysis_processing::operations::playback::{
 use audio_analysis_rhythm::track::{TrackRhythmConfig, analyze_rhythm_track};
 use wasm_bindgen::prelude::*;
 
+mod effects;
 mod monitoring;
 mod transport;
+pub use effects::*;
 pub use monitoring::*;
 pub use transport::*;
 
