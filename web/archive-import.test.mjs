@@ -10,9 +10,9 @@ import {
   parseM3u,
 } from "./archive-import.js";
 
-test("M3U parsing ignores comments and remote URLs while normalizing local paths", () => {
-  const parsed = parseM3u("#EXTM3U\n#EXTINF:1,Track\nMusic\\Track.mp3\nhttps://example.com/live.mp3\n");
-  assert.deepEqual(parsed.references, ["Music/Track.mp3"]);
+test("M3U parsing ignores comments and remote URLs while preserving local references", () => {
+  const parsed = parseM3u("#EXTM3U\n#EXTINF:1,Track\nMusic\\Track.mp3\n../Encore.mp3\nhttps://example.com/live.mp3\n");
+  assert.deepEqual(parsed.references, ["Music/Track.mp3", "../Encore.mp3"]);
   assert.equal(parsed.ignoredExternal, 1);
   assert.equal(normalizeLibraryPath("sets/../Music/Track.mp3"), "Music/Track.mp3");
 });
@@ -22,17 +22,17 @@ test("playlist matching prefers exact saved paths and only falls back to unambig
     { id: "one", name: "track.mp3", path: "set-a/track.mp3" },
     { id: "two", name: "other.mp3", path: "set-b/other.mp3" },
   ];
-  const result = matchPlaylistReferences(["set-a/track.mp3", "other.mp3", "missing.mp3"], records);
+  const result = matchPlaylistReferences(["set-a/track.mp3", "../other.mp3", "missing.mp3"], records);
   assert.deepEqual(result.trackIds, ["one", "two"]);
   assert.deepEqual(result.missing, ["missing.mp3"]);
 });
 
-test("stored ZIP import verifies entries and resolves embedded playlist paths", async () => {
+test("stored ZIP import verifies entries and resolves parent-relative embedded playlist paths", async () => {
   const audio = new Uint8Array([1, 2, 3, 4, 5]);
-  const playlist = new TextEncoder().encode("#EXTM3U\nsong.mp3\n");
+  const playlist = new TextEncoder().encode("#EXTM3U\n../song.mp3\n");
   const archive = buildStoredZip([
     { path: "music/song.mp3", bytes: audio },
-    { path: "music/set.m3u8", bytes: playlist },
+    { path: "music/lists/set.m3u8", bytes: playlist },
   ]);
   const file = new File([archive], "crate.zip", { type: "application/zip" });
 
