@@ -8,6 +8,7 @@ import {
   matchPlaylistReferences,
   normalizeLibraryPath,
   parseM3u,
+  readBoundedStream,
 } from "./archive-import.js";
 
 test("M3U parsing ignores comments and remote URLs while preserving local references", () => {
@@ -43,6 +44,30 @@ test("stored ZIP import verifies entries and resolves parent-relative embedded p
   assert.deepEqual(new Uint8Array(await result.audioEntries[0].file.arrayBuffer()), audio);
   assert.equal(result.playlists.length, 1);
   assert.deepEqual(result.playlists[0].references, ["music/song.mp3"]);
+});
+
+test("bounded decompression aborts before materializing bytes beyond the declared size", async () => {
+  const stream = new ReadableStream({
+    start(controller) {
+      controller.enqueue(new Uint8Array([1, 2, 3]));
+      controller.enqueue(new Uint8Array([4, 5, 6]));
+      controller.close();
+    },
+  });
+
+  await assert.rejects(readBoundedStream(stream, 4, "bomb.mp3"), /expands beyond its declared size/);
+});
+
+test("ZIP central directory is bounded before its metadata slice is materialized", async () => {
+  const centralSize = 16 * 1024 * 1024 + 1;
+  const eocd = new Uint8Array(22);
+  const view = new DataView(eocd.buffer);
+  view.setUint32(0, 0x06054b50, true);
+  view.setUint32(12, centralSize, true);
+  view.setUint32(16, 0, true);
+  const file = new File([new Uint8Array(centralSize), eocd], "metadata.zip", { type: "application/zip" });
+
+  await assert.rejects(extractZipLibrary(file), /central directory exceeds the 16 MB/);
 });
 
 function buildStoredZip(entries) {
