@@ -17,6 +17,14 @@ export function installLibraryImports(library) {
   return new LibraryImports(library).install();
 }
 
+export function playlistIdForSource(name, sourceKey = name) {
+  const normalizedSource = String(sourceKey || name || "Imported playlist")
+    .replaceAll("\\", "/")
+    .trim()
+    .toLocaleLowerCase();
+  return normalizedSource || String(name || "Imported playlist").trim().toLocaleLowerCase();
+}
+
 class LibraryImports {
   constructor(library) {
     this.library = library;
@@ -98,13 +106,23 @@ class LibraryImports {
           }
 
           for (const playlist of archive.playlists) {
-            const result = await this.savePlaylist(playlist.name, playlist.references, playlist.ignoredExternal);
+            const result = await this.savePlaylist(
+              playlist.name,
+              playlist.references,
+              playlist.ignoredExternal,
+              `${file.name}/${playlist.path}`,
+            );
             importedPlaylists += 1;
             unmatched += result.missing.length + playlist.ignoredExternal;
           }
         } else if (isPlaylistFile(file)) {
           const parsed = parseM3u(await file.text());
-          const result = await this.savePlaylist(stripExtension(file.name), parsed.references, parsed.ignoredExternal);
+          const result = await this.savePlaylist(
+            stripExtension(file.name),
+            parsed.references,
+            parsed.ignoredExternal,
+            playlistSourceForFile(file),
+          );
           importedPlaylists += 1;
           unmatched += result.missing.length + parsed.ignoredExternal;
         }
@@ -128,11 +146,12 @@ class LibraryImports {
     }
   }
 
-  async savePlaylist(name, references, ignoredExternal = 0) {
+  async savePlaylist(name, references, ignoredExternal = 0, sourceKey = name) {
     const result = matchPlaylistReferences(references, this.library.records);
     const record = {
-      id: playlistId(name),
+      id: playlistIdForSource(name, sourceKey),
       name: String(name || "Imported playlist"),
+      sourceKey: String(sourceKey || name || "Imported playlist"),
       trackIds: result.trackIds,
       missing: result.missing,
       ignoredExternal: Number(ignoredExternal) || 0,
@@ -260,8 +279,14 @@ class LibraryImports {
   }
 }
 
-function playlistId(name) {
-  return String(name || "Imported playlist").trim().toLocaleLowerCase();
+function playlistSourceForFile(file) {
+  const relativePath = String(file.webkitRelativePath ?? "").replaceAll("\\", "/").trim();
+  if (relativePath) {
+    return relativePath;
+  }
+  const size = Number.isFinite(Number(file.size)) ? Number(file.size) : 0;
+  const lastModified = Number.isFinite(Number(file.lastModified)) ? Number(file.lastModified) : 0;
+  return `${file.name}\u0000${size}\u0000${lastModified}`;
 }
 
 function stripExtension(name) {
