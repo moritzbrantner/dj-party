@@ -240,6 +240,7 @@ export class SharedSessionCoordinator extends EventTarget {
       this.#sendSnapshot(peerId);
     } else if (peerId === this.transport.snapshot()?.hostParticipantId) {
       this.snapshotRequestPending = false;
+      this.ready = false;
       this.#requestSnapshot();
     }
     this.#emitChange();
@@ -328,6 +329,13 @@ export class SharedSessionCoordinator extends EventTarget {
       const sequence = positiveSafeInteger(data.sequence);
       const command = validateSharedCommand(data.command);
       if (!sequence || !command || sequence <= this.lastCanonicalSequence) {
+        return;
+      }
+      if (!this.ready || sequence !== this.lastCanonicalSequence + 1) {
+        this.ready = false;
+        this.snapshotRequestPending = false;
+        this.#requestSnapshot();
+        this.#emitChange();
         return;
       }
       this.lastCanonicalSequence = sequence;
