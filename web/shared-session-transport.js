@@ -87,7 +87,6 @@ export class MultiplayerSharedTransport extends EventTarget {
       },
       { signal },
     );
-    this.#controllerChanged();
   }
 
   snapshot() {
@@ -115,6 +114,7 @@ export class MultiplayerSharedTransport extends EventTarget {
     for (const peerId of [...(this.controller.compatiblePeers ?? [])].sort()) {
       this.#noticeCompatible(peerId);
     }
+    this.dispatchEvent(new CustomEvent("change", { detail: this.snapshot() }));
   }
 
   close() {
