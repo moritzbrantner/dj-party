@@ -7,6 +7,7 @@ const CENTRAL_DIRECTORY_SIGNATURE = 0x02014b50;
 const LOCAL_FILE_SIGNATURE = 0x04034b50;
 const MAX_EOCD_SEARCH_BYTES = 65_557;
 const MAX_ARCHIVE_ENTRIES = 512;
+const MAX_CENTRAL_DIRECTORY_BYTES = 16 * 1024 * 1024;
 const MAX_ENTRY_BYTES = 256 * 1024 * 1024;
 const MAX_EXTRACTED_BYTES = 512 * 1024 * 1024;
 
@@ -142,7 +143,7 @@ export async function extractZipLibrary(file) {
       continue;
     }
 
-    if (entry.uncompressedSize > MAX_ENTRY_BYTES) {
+    if (entry.uncompressedSize > MAX_ENTRY_BYTES || entry.compressedSize > MAX_ENTRY_BYTES) {
       throw new Error(`ZIP entry is too large: ${entry.path}`);
     }
     extractedBytes += entry.uncompressedSize;
@@ -178,7 +179,7 @@ export async function extractZipLibrary(file) {
 async function readZipDirectory(file) {
   const tailStart = Math.max(0, file.size - MAX_EOCD_SEARCH_BYTES);
   const tailBytes = new Uint8Array(await file.slice(tailStart).arrayBuffer());
-  const eocdOffset = findSignatureFromEnd(tailBytes, EOCD_SIGNATURE);
+  const eocdOffset = findEndOfCentralDirectory(tailBytes);
   if (eocdOffset < 0) {
     throw new Error("ZIP central directory was not found");
   }
@@ -199,6 +200,9 @@ async function readZipDirectory(file) {
   }
   if (totalEntries > MAX_ARCHIVE_ENTRIES) {
     throw new Error(`ZIP contains more than ${MAX_ARCHIVE_ENTRIES} entries`);
+  }
+  if (centralDirectorySize > MAX_CENTRAL_DIRECTORY_BYTES) {
+    throw new Error("ZIP central directory exceeds the 16 MB browser metadata limit");
   }
   if (centralDirectoryOffset + centralDirectorySize > file.size) {
     throw new Error("ZIP central directory is outside the selected file");
@@ -265,6 +269,9 @@ async function extractZipEntry(file, entry) {
   if (entry.method !== 0 && entry.method !== 8) {
     throw new Error(`Unsupported ZIP compression method ${entry.method}: ${entry.path}`);
   }
+  if (entry.localHeaderOffset + 30 > file.size) {
+    throw new Error(`ZIP local header is truncated: ${entry.path}`);
+  }
 
   const localBytes = new Uint8Array(await file.slice(entry.localHeaderOffset, entry.localHeaderOffset + 30).arrayBuffer());
   if (localBytes.byteLength !== 30) {
@@ -283,7 +290,7 @@ async function extractZipEntry(file, entry) {
   }
 
   const compressed = new Uint8Array(await file.slice(dataOffset, dataOffset + entry.compressedSize).arrayBuffer());
-  const bytes = entry.method === 0 ? compressed : await inflateRaw(compressed);
+  const bytes = entry.method === 0 ? compressed : await inflateRaw(compressed, entry.uncompressedSize, entry.path);
   if (bytes.byteLength !== entry.uncompressedSize) {
     throw new Error(`ZIP entry size mismatch: ${entry.path}`);
   }
@@ -293,7 +300,7 @@ async function extractZipEntry(file, entry) {
   return bytes;
 }
 
-async function inflateRaw(bytes) {
+async function inflateRaw(bytes, expectedSize, path) {
   if (typeof DecompressionStream !== "function") {
     throw new Error("This browser cannot decompress deflated ZIP entries");
   }
@@ -303,18 +310,54 @@ async function inflateRaw(bytes) {
   } catch {
     throw new Error("This browser cannot decompress deflated ZIP entries");
   }
-  const response = new Response(new Blob([bytes]).stream().pipeThrough(stream));
-  return new Uint8Array(await response.arrayBuffer());
+  return readBoundedStream(new Blob([bytes]).stream().pipeThrough(stream), expectedSize, path);
 }
 
-function findSignatureFromEnd(bytes, signature) {
-  for (let offset = bytes.byteLength - 4; offset >= 0; offset -= 1) {
+export async function readBoundedStream(stream, expectedSize, label = "ZIP entry") {
+  if (!Number.isSafeInteger(expectedSize) || expectedSize < 0 || expectedSize > MAX_ENTRY_BYTES) {
+    throw new Error(`Invalid bounded output size: ${label}`);
+  }
+
+  const output = new Uint8Array(expectedSize);
+  const reader = stream.getReader();
+  let offset = 0;
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) {
+        break;
+      }
+      const chunk = value instanceof Uint8Array ? value : new Uint8Array(value);
+      if (offset + chunk.byteLength > expectedSize) {
+        await reader.cancel("decompressed output exceeds declared size");
+        throw new Error(`ZIP entry expands beyond its declared size: ${label}`);
+      }
+      output.set(chunk, offset);
+      offset += chunk.byteLength;
+    }
+  } finally {
+    reader.releaseLock();
+  }
+
+  if (offset !== expectedSize) {
+    throw new Error(`ZIP entry size mismatch: ${label}`);
+  }
+  return output;
+}
+
+function findEndOfCentralDirectory(bytes) {
+  for (let offset = bytes.byteLength - 22; offset >= 0; offset -= 1) {
     if (
-      bytes[offset] === (signature & 0xff) &&
-      bytes[offset + 1] === ((signature >>> 8) & 0xff) &&
-      bytes[offset + 2] === ((signature >>> 16) & 0xff) &&
-      bytes[offset + 3] === ((signature >>> 24) & 0xff)
+      bytes[offset] !== (EOCD_SIGNATURE & 0xff) ||
+      bytes[offset + 1] !== ((EOCD_SIGNATURE >>> 8) & 0xff) ||
+      bytes[offset + 2] !== ((EOCD_SIGNATURE >>> 16) & 0xff) ||
+      bytes[offset + 3] !== ((EOCD_SIGNATURE >>> 24) & 0xff)
     ) {
+      continue;
+    }
+    const view = new DataView(bytes.buffer, bytes.byteOffset + offset, bytes.byteLength - offset);
+    const commentLength = view.getUint16(20, true);
+    if (offset + 22 + commentLength === bytes.byteLength) {
       return offset;
     }
   }
