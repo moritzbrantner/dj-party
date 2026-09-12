@@ -93,10 +93,7 @@ class LibraryImports {
           const archive = await extractZipLibrary(file);
           if (archive.audioEntries.length > 0) {
             const before = new Set(this.library.records.map((record) => record.id));
-            await this.library.importFiles(
-              archive.audioEntries.map((entry) => entry.file),
-              { silent: true },
-            );
+            await this.library.importFiles(archive.audioEntries, { silent: true });
             importedTracks += this.library.records.filter((record) => !before.has(record.id)).length;
           }
 
