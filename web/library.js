@@ -178,6 +178,7 @@ class BrowserTrackLibrary {
     this.list = null;
     this.search = null;
     this.importSurface = null;
+    this.deckPersistenceSkips = new Set();
     this.ready = Promise.resolve(false);
   }
 
@@ -290,6 +291,9 @@ class BrowserTrackLibrary {
       input?.addEventListener(
         "change",
         () => {
+          if (this.deckPersistenceSkips.delete(id)) {
+            return;
+          }
           void this.importFiles([...(input.files ?? [])], { silent: true });
         },
         { capture: true },
@@ -464,9 +468,11 @@ class BrowserTrackLibrary {
 
       transfer.items.add(file);
       input.files = transfer.files;
+      this.deckPersistenceSkips.add(deckId);
       input.dispatchEvent(new Event("change", { bubbles: true }));
       this.setStatus(`Loaded ${stripExtension(record.name)} into Deck ${deckId.toUpperCase()}`);
     } catch (error) {
+      this.deckPersistenceSkips.delete(deckId);
       console.error(`Could not load saved track into Deck ${deckId.toUpperCase()}`, error);
       this.setStatus("Could not load that saved track");
     }
