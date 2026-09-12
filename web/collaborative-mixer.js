@@ -128,24 +128,30 @@ export class CollaborativeMixerControls {
         () => this.submit({ kind: "deck-level", deck: deckId, level: Number(deck.level.value) / 100 }),
         { signal },
       );
-      deck.tempo.addEventListener(
-        "input",
-        () => this.submit({ kind: "tempo", deck: deckId, percent: Number(deck.tempo.value) }),
-        { signal },
-      );
+      deck.tempo.addEventListener("input", () => this.submitTempo(deckId), { signal });
       deck.keyLock.addEventListener(
         "change",
         () => this.submit({ kind: "key-lock", deck: deckId, enabled: deck.keyLock.checked }),
         { signal },
       );
       for (const key of TONE_KEYS) {
-        deck.tone[key].addEventListener(
-          "input",
-          () => this.submit({ kind: "tone", deck: deckId, tone: this.captureDeck(deckId).tone }),
-          { signal },
-        );
+        deck.tone[key].addEventListener("input", () => this.submitTone(deckId), { signal });
       }
+
+      for (const button of [deck.syncButton, deck.phaseSyncButton]) {
+        button.addEventListener("click", () => this.submitTempo(deckId), { signal });
+      }
+      deck.fileInput.addEventListener("change", () => this.submitTempo(deckId), { signal });
+      deck.toneResetButton.addEventListener("click", () => this.submitTone(deckId), { signal });
     }
+  }
+
+  submitTempo(deckId) {
+    this.submit({ kind: "tempo", deck: deckId, percent: Number(this.controls.decks[deckId].tempo.value) });
+  }
+
+  submitTone(deckId) {
+    this.submit({ kind: "tone", deck: deckId, tone: this.captureDeck(deckId).tone });
   }
 
   submit(command) {
@@ -229,9 +235,22 @@ function findMixerControls() {
       level: document.querySelector(`#deck-${deckId}-level`),
       tempo: document.querySelector(`#deck-${deckId}-tempo`),
       keyLock: document.querySelector(`#deck-${deckId}-key-lock`),
+      syncButton: document.querySelector(`#deck-${deckId}-sync`),
+      phaseSyncButton: document.querySelector(`#deck-${deckId}-phase-sync`),
+      fileInput: document.querySelector(`#deck-${deckId}-file`),
+      toneResetButton: document.querySelector(`#deck-${deckId}-effects-reset`),
       tone,
     };
-    if (!deck.level || !deck.tempo || !deck.keyLock || Object.values(tone).some((control) => !control)) {
+    if (
+      !deck.level ||
+      !deck.tempo ||
+      !deck.keyLock ||
+      !deck.syncButton ||
+      !deck.phaseSyncButton ||
+      !deck.fileInput ||
+      !deck.toneResetButton ||
+      Object.values(tone).some((control) => !control)
+    ) {
       return null;
     }
     decks[deckId] = deck;
