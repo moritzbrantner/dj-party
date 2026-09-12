@@ -7,14 +7,20 @@ export const DJ_PARTY_SESSION_PROTOCOL = 1;
 const LOCAL_SIGNALING_API = "http://127.0.0.1:8787";
 const HELLO_TYPE = "dj-party/session-hello";
 
-async function loadPinnedMultiplayerClient() {
-  const [sessionModule, turnModule] = await Promise.all([
-    import(MULTIPLAYER_CLIENT_MODULE_URL),
-    import(MULTIPLAYER_TURN_MODULE_URL),
-  ]);
+export async function loadMultiplayerClientModules(importModule = (url) => import(url)) {
+  const sessionModule = await importModule(MULTIPLAYER_CLIENT_MODULE_URL);
+  let refreshTurnIceServers = null;
+  try {
+    const turnModule = await importModule(MULTIPLAYER_TURN_MODULE_URL);
+    if (typeof turnModule?.refreshTurnIceServers === "function") {
+      refreshTurnIceServers = turnModule.refreshTurnIceServers;
+    }
+  } catch {
+    // TURN is optional. The reusable session client remains direct-first.
+  }
   return {
-    LobbySession: sessionModule.LobbySession,
-    refreshTurnIceServers: turnModule.refreshTurnIceServers,
+    LobbySession: sessionModule?.LobbySession,
+    refreshTurnIceServers,
   };
 }
 
@@ -64,7 +70,10 @@ export function multiplayerApiFromLocation(locationLike = globalThis.location) {
     }
   }
 
-  if (url.hostname === "127.0.0.1" || url.hostname === "localhost" || url.hostname === "[::1]") {
+  if (
+    url.protocol === "http:" &&
+    (url.hostname === "127.0.0.1" || url.hostname === "localhost" || url.hostname === "[::1]")
+  ) {
     return LOCAL_SIGNALING_API;
   }
   return "";
@@ -103,7 +112,7 @@ export function isDjPartySessionHello(value) {
 export class DjPartyMultiplayerSession extends EventTarget {
   constructor({
     apiBase,
-    loadClient = loadPinnedMultiplayerClient,
+    loadClient = loadMultiplayerClientModules,
   } = {}) {
     super();
     this.apiBase = normalizeMultiplayerApiBase(apiBase, {
@@ -251,9 +260,22 @@ export class DjPartyMultiplayerSession extends EventTarget {
     const signal = this.abortController.signal;
     const refresh = () => this.#emit("change", this.snapshot());
 
-    for (const type of ["lobby", "participant-connected", "peer-statechange", "statechange"]) {
+    for (const type of ["lobby", "participant-connected", "statechange"]) {
       session.addEventListener(type, refresh, { signal });
     }
+
+    session.addEventListener(
+      "peer-statechange",
+      (event) => {
+        const peerId = event.detail?.peerId;
+        const state = event.detail?.state;
+        if (typeof peerId === "string" && state !== "connected") {
+          this.compatiblePeers.delete(peerId);
+        }
+        refresh();
+      },
+      { signal },
+    );
 
     session.addEventListener(
       "participant-disconnected",
