@@ -40,17 +40,26 @@ export async function writeCachedTrackAnalysis(record) {
   }
 
   const database = await openDatabase();
-  const transaction = database.transaction(ANALYSIS_STORE, "readwrite");
-  const store = transaction.objectStore(ANALYSIS_STORE);
-  store.put(record);
-  const all = await requestResult(store.getAll());
+  const write = database.transaction(ANALYSIS_STORE, "readwrite");
+  write.objectStore(ANALYSIS_STORE).put(record);
+  await transactionDone(write);
+
+  const read = database.transaction(ANALYSIS_STORE, "readonly");
+  const all = await requestResult(read.objectStore(ANALYSIS_STORE).getAll());
+  await transactionDone(read);
+
   if (all.length > MAX_CACHE_ENTRIES) {
-    all
+    const expiredIds = all
       .sort((left, right) => Number(left.updatedAt ?? 0) - Number(right.updatedAt ?? 0))
       .slice(0, all.length - MAX_CACHE_ENTRIES)
-      .forEach((entry) => store.delete(entry.id));
+      .map((entry) => entry.id);
+    const prune = database.transaction(ANALYSIS_STORE, "readwrite");
+    const store = prune.objectStore(ANALYSIS_STORE);
+    for (const id of expiredIds) {
+      store.delete(id);
+    }
+    await transactionDone(prune);
   }
-  await transactionDone(transaction);
   return true;
 }
 
@@ -163,8 +172,8 @@ function transactionDone(transaction) {
       once: true,
     });
     transaction.addEventListener("error", () => reject(transaction.error ?? new Error("IndexedDB transaction failed")), {
-      once: true,
-    });
+      once: true },
+    );
   });
 }
 
