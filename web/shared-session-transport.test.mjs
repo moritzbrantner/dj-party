@@ -1,7 +1,8 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { MultiplayerSharedTransport } from "./shared-session-transport.js";
+import { sharedSession } from "./shared-session.js";
+import { installSharedSessionTransport, MultiplayerSharedTransport } from "./shared-session-transport.js";
 
 if (typeof globalThis.CustomEvent !== "function") {
   globalThis.CustomEvent = class CustomEvent extends Event {
@@ -11,6 +12,20 @@ if (typeof globalThis.CustomEvent !== "function") {
     }
   };
 }
+
+test("shared transport attaches and detaches through explicit controller lifecycle events", () => {
+  const ui = new EventTarget();
+  const installed = installSharedSessionTransport(ui);
+  const controller = new FakeController();
+
+  ui.dispatchEvent(new CustomEvent("controller-ready", { detail: { controller } }));
+  assert.equal(sharedSession.snapshot().active, true);
+  assert.equal(sharedSession.snapshot().role, "host");
+
+  ui.dispatchEvent(new CustomEvent("controller-closed", { detail: { controller } }));
+  assert.equal(sharedSession.snapshot().active, false);
+  installed.close();
+});
 
 test("bridge forwards only messages from verified DJ Party peers", () => {
   const controller = new FakeController();
