@@ -38,6 +38,43 @@ test("local mixer inputs submit bounded shared commands", () => {
   ]);
 });
 
+test("programmatic sync, phase-sync, track load, and EQ reset changes are submitted", () => {
+  const coordinator = new FakeCoordinator();
+  const mixer = new CollaborativeMixerControls({ coordinator });
+  mixer.controls = fakeControls();
+  const deck = mixer.controls.decks.a;
+
+  deck.syncButton.addEventListener("click", () => {
+    deck.tempo.value = "4.5";
+  });
+  deck.phaseSyncButton.addEventListener("click", () => {
+    deck.tempo.value = "-2.0";
+  });
+  deck.fileInput.addEventListener("change", () => {
+    deck.tempo.value = "0.0";
+  });
+  deck.toneResetButton.addEventListener("click", () => {
+    for (const control of Object.values(deck.tone)) {
+      control.value = "0";
+    }
+  });
+
+  mixer.bindLocalChanges();
+
+  deck.syncButton.dispatchEvent(new Event("click"));
+  deck.phaseSyncButton.dispatchEvent(new Event("click"));
+  deck.fileInput.dispatchEvent(new Event("change"));
+  deck.tone.low.value = "42";
+  deck.toneResetButton.dispatchEvent(new Event("click"));
+
+  assert.deepEqual(coordinator.commands, [
+    { kind: "tempo", deck: "a", percent: 4.5 },
+    { kind: "tempo", deck: "a", percent: -2 },
+    { kind: "tempo", deck: "a", percent: 0 },
+    { kind: "tone", deck: "a", tone: { low: 0, mid: 0, high: 0, filter: 0 } },
+  ]);
+});
+
 test("remote canonical mixer commands reuse local handlers without feedback", () => {
   const coordinator = new FakeCoordinator();
   const mixer = new CollaborativeMixerControls({ coordinator });
@@ -145,6 +182,10 @@ function fakeDeck() {
     level: new FakeControl("100"),
     tempo: new FakeControl("0"),
     keyLock: new FakeControl("1"),
+    syncButton: new FakeControl(),
+    phaseSyncButton: new FakeControl(),
+    fileInput: new FakeControl(),
+    toneResetButton: new FakeControl(),
     tone: {
       low: new FakeControl("0"),
       mid: new FakeControl("0"),
