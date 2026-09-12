@@ -3,6 +3,7 @@ export const SHARED_SESSION_PROTOCOL = 1;
 const REQUEST_TYPE = "dj-party/shared/request";
 const COMMAND_TYPE = "dj-party/shared/command";
 const SNAPSHOT_TYPE = "dj-party/shared/snapshot";
+const SNAPSHOT_REQUEST_TYPE = "dj-party/shared/snapshot-request";
 const DECK_IDS = new Set(["a", "b"]);
 
 export function validateSharedCommand(value) {
@@ -77,9 +78,12 @@ export class SharedSessionCoordinator extends EventTarget {
       throw new Error("Shared session mixer adapter is incomplete");
     }
     this.mixer = adapter;
+    this.#mixerReady();
     return () => {
       if (this.mixer === adapter) {
         this.mixer = null;
+        this.ready = false;
+        this.#emitChange();
       }
     };
   }
@@ -106,6 +110,7 @@ export class SharedSessionCoordinator extends EventTarget {
       { signal },
     );
     this.#transportChanged();
+    this.#mixerReady();
   }
 
   detachTransport() {
@@ -177,6 +182,25 @@ export class SharedSessionCoordinator extends EventTarget {
     return true;
   }
 
+  #mixerReady() {
+    if (!this.transport || !this.mixer) {
+      return;
+    }
+    const state = this.transport.snapshot();
+    if (state.state !== "connected") {
+      return;
+    }
+    if (this.#isHost()) {
+      this.ready = true;
+      for (const peerId of [...(state.compatiblePeerIds ?? [])].sort()) {
+        this.#sendSnapshot(peerId);
+      }
+    } else {
+      this.#requestSnapshot();
+    }
+    this.#emitChange();
+  }
+
   #transportChanged() {
     if (!this.transport) {
       return;
@@ -185,28 +209,57 @@ export class SharedSessionCoordinator extends EventTarget {
     if (state.state !== "connected") {
       this.ready = false;
     } else if (this.#isHost()) {
-      this.ready = true;
+      this.ready = Boolean(this.mixer);
     } else if (!state.compatiblePeerIds?.includes(state.hostParticipantId)) {
       this.ready = false;
+    } else if (!this.ready && this.mixer) {
+      this.#requestSnapshot();
     }
     this.#emitChange();
   }
 
   #peerCompatible(peerId) {
-    if (typeof peerId !== "string" || !this.transport || !this.mixer) {
+    if (typeof peerId !== "string" || !this.transport) {
       return;
     }
     if (this.#isHost()) {
-      const message = this.#snapshotMessage();
-      if (message) {
-        this.transport.sendApplicationReliable(peerId, message);
-      }
+      this.#sendSnapshot(peerId);
+    } else if (peerId === this.transport.snapshot()?.hostParticipantId) {
+      this.#requestSnapshot();
     }
     this.#emitChange();
   }
 
+  #requestSnapshot() {
+    if (!this.transport || !this.mixer || this.#isHost()) {
+      return false;
+    }
+    const state = this.transport.snapshot();
+    const host = state.hostParticipantId;
+    if (typeof host !== "string" || !state.compatiblePeerIds?.includes(host)) {
+      return false;
+    }
+    this.transport.sendApplicationReliable(host, {
+      type: SNAPSHOT_REQUEST_TYPE,
+      protocol: SHARED_SESSION_PROTOCOL,
+    });
+    return true;
+  }
+
+  #sendSnapshot(peerId) {
+    if (!this.transport || !this.mixer || !this.#isHost()) {
+      return false;
+    }
+    const message = this.#snapshotMessage();
+    if (!message) {
+      return false;
+    }
+    this.transport.sendApplicationReliable(peerId, message);
+    return true;
+  }
+
   #receive(peerId, data) {
-    if (typeof peerId !== "string" || !this.transport || !this.mixer || !data || typeof data !== "object") {
+    if (typeof peerId !== "string" || !this.transport || !data || typeof data !== "object") {
       return;
     }
     if (data.protocol !== SHARED_SESSION_PROTOCOL) {
@@ -214,7 +267,11 @@ export class SharedSessionCoordinator extends EventTarget {
     }
 
     if (this.#isHost()) {
-      if (data.type !== REQUEST_TYPE) {
+      if (data.type === SNAPSHOT_REQUEST_TYPE) {
+        this.#sendSnapshot(peerId);
+        return;
+      }
+      if (data.type !== REQUEST_TYPE || !this.mixer) {
         return;
       }
       const requestSequence = positiveSafeInteger(data.requestSequence);
@@ -233,6 +290,9 @@ export class SharedSessionCoordinator extends EventTarget {
       return;
     }
 
+    if (!this.mixer) {
+      return;
+    }
     const host = this.transport.snapshot()?.hostParticipantId;
     if (peerId !== host) {
       return;
@@ -332,13 +392,11 @@ function deckId(value) {
 }
 
 function finiteRange(value, minimum, maximum) {
-  const number = Number(value);
-  return Number.isFinite(number) && number >= minimum && number <= maximum ? number : null;
+  return typeof value === "number" && Number.isFinite(value) && value >= minimum && value <= maximum ? value : null;
 }
 
 function integerRange(value, minimum, maximum) {
-  const number = Number(value);
-  return Number.isSafeInteger(number) && number >= minimum && number <= maximum ? number : null;
+  return typeof value === "number" && Number.isSafeInteger(value) && value >= minimum && value <= maximum ? value : null;
 }
 
 function positiveSafeInteger(value) {
