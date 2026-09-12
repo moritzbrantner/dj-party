@@ -31,10 +31,17 @@ test("multiplayer browser helpers are pinned to one exact service commit", () =>
   assert.ok(MULTIPLAYER_TURN_MODULE_URL.endsWith("/web/turn-credentials.js"));
 });
 
-test("service URL normalization allows HTTPS and loopback HTTP only", () => {
+test("service URL normalization allows HTTPS and local HTTP only on HTTP pages", () => {
   assert.equal(normalizeMultiplayerApiBase("https://multi.example.com/path"), "https://multi.example.com");
-  assert.equal(normalizeMultiplayerApiBase("http://127.0.0.1:8787"), "http://127.0.0.1:8787");
-  assert.throws(() => normalizeMultiplayerApiBase("http://example.com"), /must use HTTPS/);
+  assert.equal(
+    normalizeMultiplayerApiBase("http://127.0.0.1:8787", { pageProtocol: "http:" }),
+    "http://127.0.0.1:8787",
+  );
+  assert.throws(() => normalizeMultiplayerApiBase("http://example.com", { pageProtocol: "http:" }), /must use HTTPS/);
+  assert.throws(
+    () => normalizeMultiplayerApiBase("http://127.0.0.1:8787", { pageProtocol: "https:" }),
+    /cannot use an HTTP multiplayer service/,
+  );
   assert.throws(() => normalizeMultiplayerApiBase("https://user:pass@example.com"), /must not contain credentials/);
   assert.throws(() => normalizeMultiplayerApiBase("file:///tmp/service"), /HTTP or HTTPS/);
 });
@@ -45,6 +52,10 @@ test("local pages default to the local service while hosted pages fail closed wi
   assert.equal(
     multiplayerApiFromLocation({ href: "https://example.github.io/dj-party/?api=https%3A%2F%2Fmulti.example.com" }),
     "https://multi.example.com",
+  );
+  assert.equal(
+    multiplayerApiFromLocation({ href: "https://example.github.io/dj-party/?api=http%3A%2F%2F127.0.0.1%3A8787" }),
+    "",
   );
 });
 
@@ -154,6 +165,33 @@ test("TURN credential failure keeps an established direct session usable", async
   assert.equal(controller.snapshot().state, "connected");
   assert.equal(controller.snapshot().turnAvailable, false);
   controller.close();
+});
+
+test("closing during client loading cancels setup before a service session is created", async () => {
+  let resolveClient;
+  let constructed = 0;
+  const loading = new Promise((resolve) => {
+    resolveClient = resolve;
+  });
+  const controller = new DjPartyMultiplayerSession({
+    apiBase: "https://multi.example.com",
+    loadClient: () => loading,
+  });
+
+  const hosting = controller.host(2);
+  controller.close();
+  resolveClient({
+    LobbySession: class extends FakeLobbySession {
+      constructor(options) {
+        super(options);
+        constructed += 1;
+      }
+    },
+  });
+
+  await assert.rejects(hosting, /setup was cancelled/);
+  assert.equal(constructed, 0);
+  assert.equal(controller.snapshot().state, "closed");
 });
 
 class FakeLobbySession extends EventTarget {
