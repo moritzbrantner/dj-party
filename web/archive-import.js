@@ -58,9 +58,9 @@ export function parseM3u(text) {
       continue;
     }
 
-    const normalized = normalizeLibraryPath(decodePlaylistReference(line));
-    if (normalized) {
-      references.push(normalized);
+    const reference = decodePlaylistReference(line).replaceAll("\\", "/").trim();
+    if (reference && !reference.includes("\0")) {
+      references.push(reference);
     }
   }
 
@@ -103,12 +103,14 @@ export function matchPlaylistReferences(references, records) {
   const trackIds = [];
   const missing = [];
   for (const reference of references ?? []) {
-    const normalized = normalizeLibraryPath(reference);
-    if (!normalized) {
+    const rawReference = String(reference ?? "").replaceAll("\\", "/").trim();
+    if (!rawReference || rawReference.includes("\0")) {
       continue;
     }
-    const exact = byPath.get(normalized.toLocaleLowerCase());
-    const baseName = normalized.slice(normalized.lastIndexOf("/") + 1).toLocaleLowerCase();
+    const normalized = normalizeLibraryPath(rawReference);
+    const exact = normalized ? byPath.get(normalized.toLocaleLowerCase()) : undefined;
+    const basenameSource = normalized ?? rawReference;
+    const baseName = basenameSource.slice(basenameSource.lastIndexOf("/") + 1).toLocaleLowerCase();
     const fallback = byBaseName.get(baseName);
     const id = exact ?? fallback;
     if (id) {
@@ -116,7 +118,7 @@ export function matchPlaylistReferences(references, records) {
         trackIds.push(id);
       }
     } else {
-      missing.push(normalized);
+      missing.push(normalized ?? rawReference);
     }
   }
 
