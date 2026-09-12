@@ -142,6 +142,7 @@ export class CollaborativeMixerControls {
         button.addEventListener("click", () => this.submitTempo(deckId), { signal });
       }
       deck.fileInput.addEventListener("change", () => this.submitTempo(deckId), { signal });
+      deck.dropZone.addEventListener("drop", () => this.submitTempo(deckId), { signal });
       deck.toneResetButton.addEventListener("click", () => this.submitTone(deckId), { signal });
     }
   }
@@ -238,6 +239,7 @@ function findMixerControls() {
       syncButton: document.querySelector(`#deck-${deckId}-sync`),
       phaseSyncButton: document.querySelector(`#deck-${deckId}-phase-sync`),
       fileInput: document.querySelector(`#deck-${deckId}-file`),
+      dropZone: document.querySelector(`#deck-${deckId}-drop-zone`),
       toneResetButton: document.querySelector(`#deck-${deckId}-effects-reset`),
       tone,
     };
@@ -248,6 +250,7 @@ function findMixerControls() {
       !deck.syncButton ||
       !deck.phaseSyncButton ||
       !deck.fileInput ||
+      !deck.dropZone ||
       !deck.toneResetButton ||
       Object.values(tone).some((control) => !control)
     ) {
