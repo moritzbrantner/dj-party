@@ -79,6 +79,25 @@ test("local mixer transport events become shared deck-state submissions", async 
   adapter.destroy();
 });
 
+test("local loop activation suspends sharing and loop exit reconciles before resuming", async () => {
+  const mixer = new FakeMixerModule();
+  const coordinator = new FakeCoordinator();
+  const adapter = new CollaborativePlaybackAdapter({ mixerModule: mixer, coordinator });
+  adapter.trackContentIds.set("a", TRACK_A);
+
+  await adapter.install();
+  mixer.states.a.loopActive = true;
+  mixer.emit("a");
+  assert.equal(coordinator.refreshes, 1);
+  assert.deepEqual(coordinator.submitted, []);
+
+  mixer.states.a.loopActive = false;
+  mixer.emit("a");
+  assert.equal(coordinator.refreshes, 2);
+  assert.deepEqual(coordinator.submitted, [{ deckId: "a", state: sharedState(TRACK_A) }]);
+  adapter.destroy();
+});
+
 function sharedState(trackContentId, overrides = {}) {
   return {
     trackContentId,
@@ -126,6 +145,7 @@ class FakeCoordinator extends EventTarget {
     super();
     this.submitted = [];
     this.adapter = null;
+    this.refreshes = 0;
   }
 
   registerPlayback(adapter) {
@@ -141,6 +161,7 @@ class FakeCoordinator extends EventTarget {
   }
 
   refreshLocalTracks() {
+    this.refreshes += 1;
     return true;
   }
 
