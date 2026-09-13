@@ -2,13 +2,14 @@ import { sharedPlaybackSession } from "./shared-playback.js";
 import { trackContentIdForFile } from "./track-identity.js";
 
 const DECK_IDS = ["a", "b"];
+const AUDIO_FILE_PATTERN = /\.(mp3|wav|ogg|m4a|aac|flac)$/i;
 
-export async function installCollaborativePlayback(mixerModule, { coordinator = sharedPlaybackSession } = {}) {
+export function installCollaborativePlayback(mixerModule, { coordinator = sharedPlaybackSession } = {}) {
   if (!mixerModule) {
     return null;
   }
   const adapter = new CollaborativePlaybackAdapter({ mixerModule, coordinator });
-  await adapter.install();
+  void adapter.install();
   return adapter;
 }
 
@@ -69,9 +70,23 @@ export class CollaborativePlaybackAdapter {
     if (!this.canApplyDeckState(deckId, state)) {
       return false;
     }
+    const local = this.mixerModule.captureDeckTransport(deckId);
+    if (!local || !Number.isFinite(local.playbackRate)) {
+      return false;
+    }
+
+    // Playback-rate/tempo remains mixer authority. The remote rate is timing metadata
+    // used only to project the host playhead through network transit time.
+    const projectedPosition = state.positionSeconds + (state.playing ? (elapsedMs / 1000) * state.playbackRate : 0);
+    const localAuthorityState = {
+      ...state,
+      positionSeconds: Math.min(projectedPosition, state.durationSeconds),
+      playbackRate: local.playbackRate,
+    };
+
     this.applyingRemote.add(deckId);
     try {
-      return await this.mixerModule.applyDeckTransport(deckId, state, { elapsedMs });
+      return await this.mixerModule.applyDeckTransport(deckId, localAuthorityState, { elapsedMs: 0 });
     } finally {
       await nextTask();
       this.applyingRemote.delete(deckId);
@@ -115,24 +130,24 @@ export class CollaborativePlaybackAdapter {
         "change",
         () => {
           const [file] = fileInput.files ?? [];
-          if (file) {
+          if (looksLikeAudio(file)) {
             void this.#identifyTrack(deckId, file);
           }
         },
-        { signal },
+        { signal, capture: true },
       );
       dropZone?.addEventListener(
         "drop",
         (event) => {
           const [file] = event.dataTransfer?.files ?? [];
-          if (file) {
+          if (looksLikeAudio(file)) {
             void this.#identifyTrack(deckId, file);
           }
         },
-        { signal },
+        { signal, capture: true },
       );
       const [initial] = fileInput?.files ?? [];
-      if (initial) {
+      if (looksLikeAudio(initial)) {
         void this.#identifyTrack(deckId, initial);
       }
     }
@@ -141,6 +156,8 @@ export class CollaborativePlaybackAdapter {
   async #identifyTrack(deckId, file) {
     const generation = (this.trackGenerations.get(deckId) ?? 0) + 1;
     this.trackGenerations.set(deckId, generation);
+    // Clear synchronously in the capture phase so any pause/seek events emitted by
+    // the existing deck loader cannot be attributed to the previous track.
     this.trackContentIds.set(deckId, null);
     this.coordinator.refreshLocalTracks();
     const contentId = await trackContentIdForFile(file);
@@ -230,6 +247,10 @@ export class CollaborativePlaybackAdapter {
       ? `Shared playback aligned · sequence ${snapshot.canonicalSequence}`
       : "Shared playback waiting for host state";
   }
+}
+
+function looksLikeAudio(file) {
+  return Boolean(file && (String(file.type ?? "").startsWith("audio/") || AUDIO_FILE_PATTERN.test(String(file.name ?? ""))));
 }
 
 function nextFrame() {
