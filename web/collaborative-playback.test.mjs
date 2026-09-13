@@ -41,17 +41,22 @@ test("adapter rejects remote playback for a different track or active local loop
   assert.equal(adapter.canApplyDeckState("a", sharedState(TRACK_A)), false);
 });
 
-test("remote playback delegates elapsed-time correction to the mixer bridge", async () => {
+test("remote playback projects host time while preserving mixer-owned local tempo", async () => {
   const mixer = new FakeMixerModule();
   const adapter = new CollaborativePlaybackAdapter({ mixerModule: mixer, coordinator: new FakeCoordinator() });
   adapter.trackContentIds.set("a", TRACK_A);
 
-  assert.equal(await adapter.applyDeckState("a", sharedState(TRACK_A, { playing: true }), { elapsedMs: 125 }), true);
+  const remote = sharedState(TRACK_A, { playing: true, playbackRate: 1.08 });
+  assert.equal(await adapter.applyDeckState("a", remote, { elapsedMs: 125 }), true);
   assert.deepEqual(mixer.applied, [
     {
       deckId: "a",
-      state: sharedState(TRACK_A, { playing: true }),
-      options: { elapsedMs: 125 },
+      state: {
+        ...remote,
+        positionSeconds: 12.135,
+        playbackRate: 1,
+      },
+      options: { elapsedMs: 0 },
     },
   ]);
 });
