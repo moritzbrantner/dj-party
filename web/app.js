@@ -1,4 +1,5 @@
 import { installCollaborativeMixer } from "./collaborative-mixer.js";
+import { installCollaborativePlayback } from "./collaborative-playback.js";
 import { installLibraryImports } from "./library-imports.js";
 import { installTrackLibrary } from "./library.js";
 import { installMultiplayerSessions } from "./multiplayer.js";
@@ -16,5 +17,6 @@ if (library) {
 
 const multiplayer = installMultiplayerSessions();
 installSharedSessionTransport(multiplayer);
-await import("./mixer-app.js");
+const mixerModule = await import("./mixer-app.js");
 installCollaborativeMixer();
+await installCollaborativePlayback(mixerModule);
