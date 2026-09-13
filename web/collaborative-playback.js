@@ -3,6 +3,8 @@ import { trackContentIdForFile } from "./track-identity.js";
 
 const DECK_IDS = ["a", "b"];
 const AUDIO_FILE_PATTERN = /\.(mp3|wav|ogg|m4a|aac|flac)$/i;
+const METADATA_POLL_MS = 50;
+const MAX_METADATA_POLLS = 400;
 
 export function installCollaborativePlayback(mixerModule, { coordinator = sharedPlaybackSession } = {}) {
   if (!mixerModule) {
@@ -28,6 +30,7 @@ export class CollaborativePlaybackAdapter {
     this.trackContentIds = new Map(DECK_IDS.map((deckId) => [deckId, null]));
     this.trackGenerations = new Map(DECK_IDS.map((deckId) => [deckId, 0]));
     this.applyingRemote = new Set();
+    this.loopSuspended = new Set();
     this.unsubscribers = [];
     this.unregisterPlayback = null;
     this.abortController = new AbortController();
@@ -104,18 +107,39 @@ export class CollaborativePlaybackAdapter {
 
   #bindLocalTransport() {
     for (const deckId of DECK_IDS) {
-      const unsubscribe = this.mixerModule.subscribeDeckTransport(deckId, () => {
-        if (this.applyingRemote.has(deckId)) {
-          return;
-        }
-        const state = this.#sharedStateForDeck(deckId);
-        if (state) {
-          this.coordinator.submitLocalDeckState(deckId, state);
-        }
-        this.#renderStatus(this.coordinator.snapshot());
-      });
+      const unsubscribe = this.mixerModule.subscribeDeckTransport(deckId, () => this.#localTransportChanged(deckId));
       this.unsubscribers.push(unsubscribe);
+
+      if (typeof document !== "undefined") {
+        const signal = this.abortController.signal;
+        for (const control of document.querySelectorAll(`#deck-${deckId}-loop-controls [data-loop-beats], #deck-${deckId}-loop-off`)) {
+          control.addEventListener("click", () => this.#localTransportChanged(deckId), { signal });
+        }
+      }
     }
+  }
+
+  #localTransportChanged(deckId) {
+    if (this.applyingRemote.has(deckId)) {
+      return;
+    }
+    const local = this.mixerModule.captureDeckTransport(deckId);
+    if (local?.loopActive) {
+      if (!this.loopSuspended.has(deckId)) {
+        this.loopSuspended.add(deckId);
+        this.coordinator.refreshLocalTracks();
+      }
+      this.#renderStatus(this.coordinator.snapshot());
+      return;
+    }
+    if (this.loopSuspended.delete(deckId)) {
+      this.coordinator.refreshLocalTracks();
+    }
+    const state = this.#sharedStateForDeck(deckId);
+    if (state) {
+      this.coordinator.submitLocalDeckState(deckId, state);
+    }
+    this.#renderStatus(this.coordinator.snapshot());
   }
 
   #bindTrackIdentity() {
@@ -159,14 +183,42 @@ export class CollaborativePlaybackAdapter {
     // Clear synchronously in the capture phase so any pause/seek events emitted by
     // the existing deck loader cannot be attributed to the previous track.
     this.trackContentIds.set(deckId, null);
+    this.loopSuspended.delete(deckId);
     this.coordinator.refreshLocalTracks();
+
     const contentId = await trackContentIdForFile(file);
     if (this.trackGenerations.get(deckId) !== generation) {
       return;
     }
+    if (!contentId) {
+      this.coordinator.refreshLocalTracks();
+      return;
+    }
+
     this.trackContentIds.set(deckId, contentId);
+    const ready = await this.#waitForTrackMetadata(deckId, generation);
+    if (this.trackGenerations.get(deckId) !== generation) {
+      return;
+    }
+    if (!ready) {
+      this.trackContentIds.set(deckId, null);
+    }
     this.coordinator.refreshLocalTracks();
     this.#renderStatus(this.coordinator.snapshot());
+  }
+
+  async #waitForTrackMetadata(deckId, generation) {
+    for (let attempt = 0; attempt < MAX_METADATA_POLLS && !this.abortController.signal.aborted; attempt += 1) {
+      if (this.trackGenerations.get(deckId) !== generation) {
+        return false;
+      }
+      const local = this.mixerModule.captureDeckTransport(deckId);
+      if (Number.isFinite(local?.durationSeconds) && local.durationSeconds > 0) {
+        return true;
+      }
+      await delay(METADATA_POLL_MS);
+    }
+    return false;
   }
 
   #sharedStateForDeck(deckId) {
@@ -264,5 +316,9 @@ function nextFrame() {
 }
 
 function nextTask() {
-  return new Promise((resolve) => setTimeout(resolve, 0));
+  return delay(0);
+}
+
+function delay(milliseconds) {
+  return new Promise((resolve) => setTimeout(resolve, milliseconds));
 }
