@@ -1105,3 +1105,72 @@ window.addEventListener("beforeunload", () => {
     deck.destroy();
   }
 });
+
+export function captureDeckTransport(deckId) {
+  const deck = state.decks.get(deckId);
+  if (!deck) {
+    return null;
+  }
+  const durationSeconds = Number(deck.audio.duration);
+  const positionSeconds = Number(deck.audio.currentTime);
+  return {
+    playing: !deck.audio.paused && !deck.audio.ended,
+    positionSeconds: Number.isFinite(positionSeconds) && positionSeconds >= 0 ? positionSeconds : 0,
+    durationSeconds: Number.isFinite(durationSeconds) && durationSeconds > 0 ? durationSeconds : 0,
+    playbackRate: Number.isFinite(deck.audio.playbackRate) ? deck.audio.playbackRate : 1,
+    loopActive: Boolean(deck.activeLoop),
+  };
+}
+
+export function subscribeDeckTransport(deckId, listener) {
+  const deck = state.decks.get(deckId);
+  if (!deck || typeof listener !== "function") {
+    return () => {};
+  }
+  const notify = () => listener(captureDeckTransport(deckId));
+  for (const eventName of ["play", "pause", "seeked"]) {
+    deck.audio.addEventListener(eventName, notify);
+  }
+  return () => {
+    for (const eventName of ["play", "pause", "seeked"]) {
+      deck.audio.removeEventListener(eventName, notify);
+    }
+  };
+}
+
+export async function applyDeckTransport(deckId, value, { elapsedMs = 0 } = {}) {
+  const deck = state.decks.get(deckId);
+  if (!deck || deck.activeLoop || !value || typeof value !== "object") {
+    return false;
+  }
+  const duration = Number(deck.audio.duration);
+  const position = Number(value.positionSeconds);
+  const playbackRate = Number(value.playbackRate);
+  if (
+    !Number.isFinite(duration) ||
+    duration <= 0 ||
+    !Number.isFinite(position) ||
+    position < 0 ||
+    !Number.isFinite(playbackRate) ||
+    playbackRate < 0.84 ||
+    playbackRate > 1.16 ||
+    !Number.isFinite(elapsedMs) ||
+    elapsedMs < 0 ||
+    elapsedMs > 10_000
+  ) {
+    return false;
+  }
+
+  const projected = position + (value.playing === true ? (elapsedMs / 1000) * playbackRate : 0);
+  const target = Math.min(Math.max(0, projected), Math.max(0, duration - (value.playing === true ? 0.001 : 0)));
+  deck.setPlaybackRate(playbackRate);
+  deck.audio.currentTime = target;
+  deck.updateProgress();
+
+  if (value.playing === true) {
+    await deck.play();
+    return !deck.audio.paused;
+  }
+  deck.audio.pause();
+  return true;
+}

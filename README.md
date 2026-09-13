@@ -32,9 +32,11 @@ The app can:
 - host or join a 2–16 participant peer-to-peer lobby through `multiplayer-setup-service` without moving mixer authority into the setup service;
 - share a public lobby/service invite URL while keeping participant capability tokens inside the reusable service client;
 - verify connected peers with a versioned DJ Party hello;
-- synchronize crossfader, deck levels, tempo, key lock, and per-deck EQ/filter state between verified DJ Party peers through a host-sequenced application protocol.
+- synchronize crossfader, deck levels, tempo, key lock, and per-deck EQ/filter state between verified DJ Party peers through a host-sequenced application protocol;
+- synchronize play/pause and playhead position when both peers already have the exact same locally loaded track, verified by the SHA-256 digest of the encoded file bytes;
+- estimate the host clock from bounded reliable-channel request/response samples so remote playheads compensate for command transit time without turning the host into an audio server.
 
-Imported library blobs, playlists, cached analysis metadata, selected tracks, decoded PCM, timing state, cue points, loops, and physical monitor/output routing remain on the device. Multiplayer uses the configured setup service only for lobby/signaling/TURN setup; verified peers exchange bounded DJ Party mixer commands directly over the service-created reliable WebRTC channel. Tracks, decoded audio, chat, and content bytes are not transferred in the current shared-mixer phase.
+Library blobs, playlists, cached analysis metadata, selected track files, decoded PCM, cue/hot-cue definitions, beat-loop definitions, and physical monitor/output routing remain on the device. Multiplayer uses the configured setup service only for lobby/signaling/TURN setup; verified peers exchange bounded DJ Party mixer and playback commands directly over the service-created reliable WebRTC channel. Exact track fingerprints may cross the peer link to prove identity, but track bytes and decoded audio are not transferred.
 
 ## Architecture
 
@@ -46,7 +48,7 @@ The local library deliberately reuses the existing deck file-input path when a s
 
 ZIP extraction is deliberately fail-closed: multi-disk/ZIP64/encrypted entries and unsupported compression methods are rejected, extracted audio/playlist bytes are bounded, and each materialized entry is checked against its ZIP CRC. Deflated entries require browser `DecompressionStream("deflate-raw")` support.
 
-Track-analysis cache entries are keyed by a SHA-256 fingerprint of decoded mono PCM plus sample rate and an explicit analysis namespace. A stale namespace or malformed cached record is ignored. The cache is an optimization only: cache failures never replace or weaken the normal Rust-backed waveform/rhythm analysis path.
+Track-analysis cache entries are keyed by a SHA-256 fingerprint of decoded mono PCM plus sample rate and an explicit analysis namespace. A stale namespace or malformed cached record is ignored. The cache is an optimization only: cache failures never replace or weaken the normal Rust-backed waveform/rhythm analysis path. Shared-playback identity is intentionally different: it hashes the exact encoded file bytes, because two peers may synchronize transport only when they prove that they loaded the same local media object.
 
 Headphone cueing is deliberately pre-fader: each deck's tone chain is applied before the signal splits into the post-fader master branch and pre-fader cue branch. The selected cue therefore hears the same EQ/filter state as the deck while still bypassing deck level and crossfader. The optional Master contribution follows the same Rust-owned post-fader deck gains heard on the main output. Physical headphone/master output selection and monitor cue state remain local hardware policy and are never shared.
 
@@ -62,11 +64,11 @@ The configured signaling API and public lobby code may be stored in URL query pa
 
 Shared mixer state is a DJ Party application protocol layered over already verified reliable peer links. The lobby host is the canonical serializer, not an authoritative audio server: the host assigns monotonically increasing sequence numbers to valid mixer changes, and every browser still applies the same existing Rust/WebAudio mixer behavior locally.
 
-Guests send bounded change requests with monotonically increasing per-guest request numbers. The host rejects duplicate/stale requests, applies a valid request through the same local control path, and broadcasts the resulting canonical command. Guests accept canonical commands and snapshots only from the current lobby host and ignore stale sequence numbers.
+Guests send bounded change requests with monotonically increasing per-guest request numbers. The host rejects duplicate/stale requests, applies a valid request through the same local control path, and broadcasts the resulting canonical command. Guests accept canonical commands and snapshots only from the current lobby host and ignore stale or noncontiguous sequence numbers.
 
 A host snapshot is required before a guest reports the shared mixer as converged. New/reconnected guests explicitly request the snapshot, so session setup finishing before the mixer UI initializes cannot silently lose the canonical state.
 
-The current synchronized surface is deliberately limited to:
+The synchronized mixer surface is deliberately limited to:
 
 - crossfader position;
 - Deck A/B level;
@@ -74,13 +76,24 @@ The current synchronized surface is deliberately limited to:
 - Deck A/B key-lock state;
 - Deck A/B Low/Mid/High EQ and filter controls.
 
-Play/pause/seek, cue points, loops, hot cues, track selection, and content bytes remain local in this phase. Those transport operations require verified track identity and clock/alignment semantics and will be added together rather than pretending two browsers necessarily have the same audio loaded.
+### Shared playback authority
+
+Playback synchronization is a separate DJ Party protocol over the same verified peer links. Separating it from mixer sequencing prevents a playback recovery snapshot from changing mixer authority or replay semantics.
+
+Each locally selected audio file is identified for collaboration by the lowercase SHA-256 digest of its exact encoded bytes. A guest will not apply a host play/pause/seek state unless its corresponding deck already has the same fingerprint and a compatible duration. Filename, title, BPM, and duration alone are never accepted as track identity. A fingerprint is identity evidence only; it does not authorize downloading or uploading the track.
+
+Guests estimate the host clock with three bounded request/response samples and retain the lowest-round-trip sample. Canonical playback commands and snapshots carry a host timestamp; the receiver projects a playing deck's host playhead through the estimated transit time before applying it to its local media element. Messages with invalid timing, excessive age, stale/noncontiguous sequences, or a mismatched local track fail closed and require reconciliation.
+
+Tempo remains part of the mixer authority. The playback protocol carries the source playback rate only as timing metadata for playhead projection; applying a remote playback command does not replace the locally converged mixer tempo. Track selection also stays local.
+
+Active beat loops remain intentionally local in this phase. A deck with a local active loop does not participate in shared playback until the loop is disabled, rather than pretending a loop definition has been synchronized. Cue definitions, hot-cue definitions, and content bytes likewise remain local. Their resulting one-off playhead movement can converge through ordinary bounded playback state once the exact-track and clock requirements are satisfied.
 
 Reusable ownership remains explicit:
 
 - BPM, beat-grid, downbeat, related rhythm analysis, reusable policy-neutral playback/DJ calculations, and generic DSP/filter math come from shared audio/math layers rather than being reimplemented here;
 - collaborative lobby/signaling and WebRTC connection setup come from `multiplayer-setup-service`;
-- host sequencing, convergence, replay protection, and mixer commands are DJ Party application semantics.
+- host sequencing, replay protection, mixer convergence, exact-track playback convergence, and clock alignment are DJ Party application semantics;
+- browser media elements and Web Audio remain local playback/rendering mechanisms.
 
 ## Build and validate
 
@@ -90,7 +103,7 @@ Requirements: Rust 1.95.0, the `wasm32-unknown-unknown` target, and `wasm-pack` 
 cargo fmt --all --check
 cargo clippy --all-targets --all-features -- -D warnings
 cargo test --all-features
-node --test web/library.test.mjs web/archive-import.test.mjs web/analysis-cache.test.mjs web/multiplayer.test.mjs web/shared-session.test.mjs web/shared-session-transport.test.mjs web/collaborative-mixer.test.mjs
+node --test web/library.test.mjs web/archive-import.test.mjs web/analysis-cache.test.mjs web/multiplayer.test.mjs web/shared-session.test.mjs web/shared-session-transport.test.mjs web/collaborative-mixer.test.mjs web/track-identity.test.mjs web/shared-playback.test.mjs web/collaborative-playback.test.mjs
 cargo install wasm-pack --version 0.13.1 --locked
 bash scripts/build-pages.sh
 ```
@@ -110,6 +123,7 @@ The generated static site is written to `_site/` and can be served by any local 
 9. ZIP/playlist library import plus reusable cached track-analysis metadata — done
 10. Multiplayer sessions through `multiplayer-setup-service` — done
 11. Shared-session authority, synchronization, optional asset transfer, and collaborative mixing — current slice
-   - host-sequenced shared mixer controls and late-join reconciliation — implemented in the current phase
-   - track identity + synchronized transport/clock alignment — next
+   - host-sequenced shared mixer controls and late-join reconciliation — implemented
+   - exact-track identity + clock-aligned play/pause/seek reconciliation — implemented
+   - shared loop lifecycle and richer performance-transport semantics — next
    - optional verified asset transfer and broader collaborative mixing — later

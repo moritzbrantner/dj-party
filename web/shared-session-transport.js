@@ -1,3 +1,4 @@
+import { sharedPlaybackSession } from "./shared-playback.js";
 import { sharedSession } from "./shared-session.js";
 
 export function installSharedSessionTransport(multiplayerUi) {
@@ -12,6 +13,7 @@ export function installSharedSessionTransport(multiplayerUi) {
   const detach = () => {
     bridge?.close();
     bridge = null;
+    sharedPlaybackSession.detachTransport();
     sharedSession.detachTransport();
   };
 
@@ -25,6 +27,7 @@ export function installSharedSessionTransport(multiplayerUi) {
       }
       bridge = new MultiplayerSharedTransport(controller);
       sharedSession.attachTransport(bridge);
+      sharedPlaybackSession.attachTransport(bridge);
       bridge.emitInitialCompatiblePeers();
     },
     { signal },
@@ -46,7 +49,7 @@ export function installSharedSessionTransport(multiplayerUi) {
   const note = typeof document === "undefined" ? null : document.querySelector(".multiplayer-note");
   if (note) {
     note.textContent =
-      "The setup service remains signaling/transport only. Verified DJ Party peers synchronize bounded mixer commands through a host-sequenced application protocol; tracks and content bytes remain local.";
+      "The setup service remains signaling/transport only. Verified DJ Party peers synchronize bounded mixer state and exact-track playback commands peer to peer; track bytes and hardware routing remain local.";
   }
 
   return {
