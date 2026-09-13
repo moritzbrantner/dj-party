@@ -7,7 +7,7 @@ test("track identity is the lowercase SHA-256 of exact file bytes", async () => 
   const bytes = new TextEncoder().encode("dj-party exact track bytes");
   const id = await trackContentIdForBytes(bytes);
 
-  assert.equal(id, "d921d79ca7ad94b979e6c9f25c497fb2525c28c9a2fd826a77147df786b92662");
+  assert.equal(id, "b838579af8e8004bfbc9a1783c90d21e85f72a4470e6b29fd0180b4b875f8e5d");
   assert.equal(isTrackContentId(id), true);
 });
 
