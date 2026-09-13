@@ -41,12 +41,12 @@ jobs:
 
       - name: Check browser JavaScript syntax
         run: |
-          for file in web/app.js web/mixer-app.js web/multiplayer.js web/shared-session.js web/shared-session-transport.js web/collaborative-mixer.js web/library.js web/library-imports.js web/archive-import.js web/analysis-cache.js web/analysis-worker.js web/performance.js web/output-routing.js web/effects.js; do
+          for file in web/app.js web/mixer-app.js web/multiplayer.js web/shared-session.js web/shared-session-transport.js web/shared-playback.js web/collaborative-mixer.js web/collaborative-playback.js web/track-identity.js web/library.js web/library-imports.js web/archive-import.js web/analysis-cache.js web/analysis-worker.js web/performance.js web/output-routing.js web/effects.js; do
             node --input-type=module --check < "$file"
           done
 
       - name: Test browser-local helpers
-        run: node --test web/library.test.mjs web/archive-import.test.mjs web/analysis-cache.test.mjs web/multiplayer.test.mjs web/shared-session.test.mjs web/shared-session-transport.test.mjs web/collaborative-mixer.test.mjs
+        run: node --test web/library.test.mjs web/archive-import.test.mjs web/analysis-cache.test.mjs web/multiplayer.test.mjs web/shared-session.test.mjs web/shared-session-transport.test.mjs web/collaborative-mixer.test.mjs web/track-identity.test.mjs web/shared-playback.test.mjs web/collaborative-playback.test.mjs
 
       - name: Install wasm-pack
         run: cargo install wasm-pack --version 0.13.1 --locked
@@ -91,7 +91,10 @@ jobs:
           multiplayer = (root / "multiplayer.js").read_text()
           shared_session = (root / "shared-session.js").read_text()
           shared_transport = (root / "shared-session-transport.js").read_text()
+          shared_playback = (root / "shared-playback.js").read_text()
           collaborative = (root / "collaborative-mixer.js").read_text()
+          collaborative_playback = (root / "collaborative-playback.js").read_text()
+          track_identity = (root / "track-identity.js").read_text()
           mixer = (root / "mixer-app.js").read_text()
           library = (root / "library.js").read_text()
           library_imports = (root / "library-imports.js").read_text()
@@ -108,6 +111,7 @@ jobs:
           assert './multiplayer.js' in app and 'installMultiplayerSessions' in app, "browser bootstrap does not install multiplayer setup"
           assert './shared-session-transport.js' in app and 'installSharedSessionTransport' in app, "browser bootstrap does not attach verified peers to shared authority"
           assert './collaborative-mixer.js' in app and 'installCollaborativeMixer' in app, "browser bootstrap does not install collaborative mixer bindings"
+          assert './collaborative-playback.js' in app and 'installCollaborativePlayback' in app, "browser bootstrap does not install collaborative playback bindings"
           assert './mixer-app.js' in app, "browser bootstrap does not start the mixer adapter"
 
           assert '556f1aa2ac889acffd5b2b27163fca10f1901793' in multiplayer, "multiplayer client is not pinned to the reviewed service commit"
@@ -126,9 +130,19 @@ jobs:
           assert 'case "transport"' not in shared_session, "transport commands must stay outside this mixer-only shared slice"
           assert 'sendApplicationReliable' in shared_transport and 'broadcastApplicationReliable' in shared_transport, "shared transport does not use verified reliable peer links"
           assert 'compatiblePeers' in shared_transport, "shared transport does not bind to verified DJ Party peers"
+          assert 'sharedPlaybackSession.attachTransport' in shared_transport, "verified transport is not shared with playback authority"
           for control in ['crossfader', 'deck-level', 'tempo', 'key-lock', 'tone']:
               assert control in shared_session, f"shared mixer protocol is missing {control}"
           assert 'monitor-' not in collaborative and 'headphone' not in collaborative.lower(), "hardware-local monitoring leaked into shared mixer state"
+
+          for message_type in ['clock-request', 'clock-response', 'playback/request', 'playback/command', 'playback/snapshot']:
+              assert message_type in shared_playback, f"shared playback protocol is missing {message_type}"
+          assert 'calculateClockSample' in shared_playback and 'clockSampleTarget' in shared_playback, "playback clock alignment evidence is missing"
+          assert 'trackContentId' in shared_playback and 'sendContent(' not in shared_playback, "playback must carry identity, never content bytes"
+          assert 'trackContentIdForFile' in collaborative_playback, "collaborative playback does not derive exact local track identity"
+          assert 'loopActive' in collaborative_playback, "local beat-loop conflict is not fail-closed"
+          assert 'SHA-256' in track_identity, "track identity is not cryptographic content identity"
+          assert 'captureDeckTransport' in mixer and 'applyDeckTransport' in mixer and 'subscribeDeckTransport' in mixer, "mixer does not expose the bounded local playback bridge"
 
           assert './archive-import.js' in library_imports, "library imports do not reference bounded archive helpers"
           assert 'extractZipLibrary' in library_imports and 'parseM3u' in library_imports, "ZIP/M3U import path is incomplete"
@@ -158,7 +172,8 @@ jobs:
           assert 'phase-sync' in html_path.read_text(), "phase-sync controls missing from Pages HTML"
 
           for asset in [
-              "multiplayer.js", "multiplayer.css", "shared-session.js", "shared-session-transport.js", "collaborative-mixer.js",
+              "multiplayer.js", "multiplayer.css", "shared-session.js", "shared-session-transport.js", "shared-playback.js",
+              "collaborative-mixer.js", "collaborative-playback.js", "track-identity.js",
               "library.css", "library.js", "library-imports.js", "library-imports.css",
               "archive-import.js", "analysis-cache.js", "mixer-app.js", "monitoring.css",
               "output-routing.js", "effects.js", "effects.css"
