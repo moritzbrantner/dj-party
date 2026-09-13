@@ -21,7 +21,7 @@ DJ Party is a browser-first DJ application with a Rust core. The long-term direc
 - Headphone cue branches are pre-fader. The monitor's Master contribution must follow the existing Rust-owned post-fader deck gains rather than duplicate crossfader or deck-level math in JavaScript.
 - Audio-output routing must fail closed: when a separate permitted sink cannot be selected or disappears, stop that monitor route without changing the master playback route.
 - Do not duplicate Rust mixer, monitor, transport, or tone-policy formulas in JavaScript.
-- Local library blobs, playlists, cached analysis, tracks, decoded PCM, timing state, cue points, loops, tone state, and monitor state must stay local unless a future feature explicitly introduces user-approved transfer or sharing.
+- Local library blobs, playlists, cached analysis, decoded PCM, cue definitions, hot-cue definitions, loop definitions, tone state, and monitor state stay local unless a later feature explicitly introduces user-approved transfer or sharing.
 - Beat-dependent controls must fail closed outside the verified beat-grid horizon; never silently snap to stale analyzed data.
 - `audio-analysis` remains authoritative for BPM, beat-grid, downbeat, Fourier, related reusable analysis semantics, and reusable policy-neutral audio/DJ calculations.
 - Multiplayer session setup must use the reusable `LobbySession` client from `multiplayer-setup-service`; do not reimplement lobby HTTP, participant capability-token handling, signaling WebSockets, reconnect policy, ICE exchange, TURN credential handling, or WebRTC link establishment in DJ Party.
@@ -29,13 +29,19 @@ DJ Party is a browser-first DJ application with a Rust core. The long-term direc
 - DJ Party's setup adapter uses `mesh` topology and keeps optional content sharing disabled until a later slice explicitly adds user-approved transfer with content verification.
 - The setup service is rendezvous/control plane only. Mixer authority, DJ Party commands, audio state, tracks, chat, and content bytes must not move into the service.
 - Public invite state may contain only the setup-service API base and public lobby code. Participant capability tokens must remain inside the reusable service client and must never be copied into DJ Party state, storage, logs, or URLs.
-- Shared mixer messages may flow only through already verified DJ Party reliable peer links. Ignore application messages from unverified peers and ignore unknown protocol versions/types.
-- DJ Party shared-session authority is host-sequenced application state, not signaling-service authority. The current lobby host assigns monotonic canonical sequence numbers; guests submit monotonic per-peer requests; the host rejects stale/duplicate guest requests before rebroadcasting a canonical command.
-- A guest is not considered converged merely because it received a later command. It must receive a valid host snapshot. New/reconnected guests must explicitly request a snapshot once both the verified host link and local mixer adapter are ready.
-- Shared commands and snapshots must be strictly validated without numeric-string coercion. Invalid, stale, malformed, unknown, or out-of-range messages fail closed.
-- The current shared state surface is crossfader, Deck A/B levels, tempo percentages, key lock, and Low/Mid/High/filter controls. Apply remote canonical changes through the existing local DOM/Rust/WebAudio control paths; do not duplicate mixer or tone formulas in the networking layer.
-- Physical headphone/master output routing, monitor cue/mix/level, tracks, play/pause/seek, cue points, loops, hot cues, and beat-jump/phase transport remain local in this phase.
-- Do not add shared transport commands until track identity and clock/alignment semantics are implemented together. Do not claim two browsers share transport state merely because their UI controls look similar.
+- Shared application messages may flow only through already verified DJ Party reliable peer links. Ignore application messages from unverified peers and ignore unknown protocol versions/types.
+- DJ Party shared-session authority is host-sequenced application state, not signaling-service or server audio authority. The current lobby host assigns monotonic canonical sequence numbers; guests submit monotonic per-peer requests; the host rejects stale/duplicate guest requests before rebroadcasting canonical state.
+- Mixer-state convergence and playback convergence are separate protocols. A failure or resnapshot in one must not silently rewrite the sequencing rules of the other.
+- A guest is not considered mixer-converged merely because it received a later command. It must receive a valid host mixer snapshot. New/reconnected guests explicitly request a snapshot once both the verified host link and local mixer adapter are ready.
+- Shared commands and snapshots must be strictly validated without numeric-string coercion. Invalid, stale, malformed, unknown, out-of-range, noncontiguous, or excessively old messages fail closed.
+- The shared mixer surface is crossfader, Deck A/B levels, tempo percentages, key lock, and Low/Mid/High/filter controls. Apply remote canonical changes through the existing local DOM/Rust/WebAudio control paths; do not duplicate mixer or tone formulas in the networking layer.
+- Shared playback may carry only bounded transport state plus an exact lowercase SHA-256 identity of the encoded local track bytes. The fingerprint proves identity; it is never permission to upload or fetch the track and must never be replaced by filename, title, duration, or other weak metadata identity.
+- Track selection remains local. A remote play/pause/seek state may apply only when the receiving deck already has the same exact content identity. Missing or mismatched tracks fail closed and require a fresh host snapshot after the local track changes.
+- Shared playback clock alignment uses bounded request/response samples to estimate the host clock and compensate command transit time. Clock estimation is synchronization metadata only; browser media elements remain the playback mechanism and the host remains a serializer rather than an audio-rendering authority.
+- Playback snapshots are recovery/bootstrap state, not permission to transfer content. Late join/reconnect and canonical sequence gaps require a fresh snapshot before the guest reports aligned playback.
+- Active beat loops remain local in this phase and must block shared playback application/submission rather than silently diverging. Loop definitions and loop lifecycle become shareable only in a later explicit protocol slice.
+- Cue/hot-cue/beat-jump definitions remain local. Their resulting playhead seek may be represented by bounded shared transport state only when exact track identity and clock requirements hold.
+- Physical headphone/master output routing and monitor cue/mix/level always remain local hardware policy and never enter mixer or playback snapshots.
 - Content sharing remains disabled; optional asset transfer must be explicitly user-approved and content-verified in a later phase.
 
 ## Browser acceptance
@@ -45,20 +51,21 @@ The browser app is acceptable when all of these hold:
 1. `cargo fmt --all --check`
 2. `cargo clippy --all-targets --all-features -- -D warnings`
 3. `cargo test --all-features`
-4. browser-module syntax validation passes for `web/app.js`, `web/mixer-app.js`, `web/multiplayer.js`, `web/shared-session.js`, `web/shared-session-transport.js`, `web/collaborative-mixer.js`, `web/library.js`, `web/library-imports.js`, `web/archive-import.js`, `web/analysis-cache.js`, `web/analysis-worker.js`, `web/performance.js`, `web/output-routing.js`, and `web/effects.js`
-5. `node --test web/library.test.mjs web/archive-import.test.mjs web/analysis-cache.test.mjs web/multiplayer.test.mjs web/shared-session.test.mjs web/shared-session-transport.test.mjs web/collaborative-mixer.test.mjs` passes deterministic library/archive/cache/multiplayer/shared-authority contracts
+4. browser-module syntax validation passes for `web/app.js`, `web/mixer-app.js`, `web/multiplayer.js`, `web/shared-session.js`, `web/shared-session-transport.js`, `web/shared-playback.js`, `web/collaborative-mixer.js`, `web/collaborative-playback.js`, `web/track-identity.js`, `web/library.js`, `web/library-imports.js`, `web/archive-import.js`, `web/analysis-cache.js`, `web/analysis-worker.js`, `web/performance.js`, `web/output-routing.js`, and `web/effects.js`
+5. `node --test web/library.test.mjs web/archive-import.test.mjs web/analysis-cache.test.mjs web/multiplayer.test.mjs web/shared-session.test.mjs web/shared-session-transport.test.mjs web/collaborative-mixer.test.mjs web/track-identity.test.mjs web/shared-playback.test.mjs web/collaborative-playback.test.mjs` passes deterministic library/archive/cache/multiplayer/mixer/playback contracts
 6. `bash scripts/build-pages.sh`
-7. the built Pages artifact contains the generated Rust/WASM package and all local browser modules/assets, including multiplayer setup, shared-session authority/transport/mixer adapters, track-library, archive/playlist import, analysis-cache, deck-effects, and headphone-monitor routing assets
+7. the built Pages artifact contains the generated Rust/WASM package and all local browser modules/assets, including multiplayer setup, mixer authority, shared-playback authority, exact-track identity, track-library, archive/playlist import, analysis-cache, deck-effects, and headphone-monitor routing assets
 8. multi-file/folder/ZIP imports stay browser-local, duplicate audio imports still collapse through the canonical track importer, and saved/playlist tracks load through the existing deck file path
 9. ZIP relevant entries are bounded and CRC-verified, remote playlist references are not fetched, and unsupported archive features fail closed
 10. cached waveform/rhythm results are content-addressed/versioned and a cache miss, stale record, or cache failure falls back to normal worker analysis
 11. multiplayer setup consumes an exact-commit reusable service client, uses mesh topology, keeps content sharing disabled, and never exposes participant capability tokens in DJ Party state/URLs
-12. only verified DJ Party peers can enter the shared application protocol; unverified reliable messages remain outside shared state
-13. host canonical command sequencing, per-peer request replay protection, snapshot request/reconciliation, and stale canonical-message rejection are covered by deterministic tests
-14. shared state contains crossfader, deck levels, tempo, key lock, and tone controls only; transport, track bytes, and physical monitoring state are excluded
-15. remote shared changes reuse the existing local mixer/effects handlers without feedback-loop rebroadcast
-16. BPM Sync remains tempo-only while Phase Sync explicitly owns the transport seek needed for phase alignment
-17. per-deck tone controls use Rust-owned parameter plans, exact center filter state is a bypass, and both master and pre-fader cue consume the same tone-shaped signal
-18. browsers without usable audio-output selection keep monitoring disabled without weakening or redirecting normal master playback
+12. only verified DJ Party peers can enter either shared application protocol; unverified reliable messages remain outside mixer and playback state
+13. mixer authority covers host canonical sequencing, per-peer request replay protection, snapshot reconciliation, stale/non-host rejection, and feedback-free reuse of existing mixer/effects handlers
+14. playback authority covers exact SHA-256 track identity, host sequencing, per-peer replay protection, bounded three-sample clock alignment, contiguous canonical commands, late-join/gap snapshots, and mismatched-track failure
+15. track bytes, decoded PCM, library storage, capability tokens, physical output routing, monitor controls, and active loop definitions never enter shared playback messages
+16. the mixer exposes only the bounded local playback bridge needed to capture/apply media-element transport; networking code must not reach into WebAudio graphs or duplicate transport math
+17. BPM Sync remains tempo-only while Phase Sync explicitly owns the local transport seek needed for phase alignment
+18. per-deck tone controls use Rust-owned parameter plans, exact center filter state is a bypass, and both master and pre-fader cue consume the same tone-shaped signal
+19. browsers without usable audio-output selection keep monitoring disabled without weakening or redirecting normal master playback
 
 Do not weaken these checks to make a change mergeable.
