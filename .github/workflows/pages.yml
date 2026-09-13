@@ -41,12 +41,12 @@ jobs:
 
       - name: Check browser JavaScript syntax
         run: |
-          for file in web/app.js web/mixer-app.js web/multiplayer.js web/library.js web/library-imports.js web/archive-import.js web/analysis-cache.js web/analysis-worker.js web/performance.js web/output-routing.js web/effects.js; do
+          for file in web/app.js web/mixer-app.js web/multiplayer.js web/shared-session.js web/shared-session-transport.js web/collaborative-mixer.js web/library.js web/library-imports.js web/archive-import.js web/analysis-cache.js web/analysis-worker.js web/performance.js web/output-routing.js web/effects.js; do
             node --input-type=module --check < "$file"
           done
 
       - name: Test browser-local helpers
-        run: node --test web/library.test.mjs web/archive-import.test.mjs web/analysis-cache.test.mjs web/multiplayer.test.mjs
+        run: node --test web/library.test.mjs web/archive-import.test.mjs web/analysis-cache.test.mjs web/multiplayer.test.mjs web/shared-session.test.mjs web/shared-session-transport.test.mjs web/collaborative-mixer.test.mjs
 
       - name: Install wasm-pack
         run: cargo install wasm-pack --version 0.13.1 --locked
@@ -89,6 +89,9 @@ jobs:
 
           app = (root / "app.js").read_text()
           multiplayer = (root / "multiplayer.js").read_text()
+          shared_session = (root / "shared-session.js").read_text()
+          shared_transport = (root / "shared-session-transport.js").read_text()
+          collaborative = (root / "collaborative-mixer.js").read_text()
           mixer = (root / "mixer-app.js").read_text()
           library = (root / "library.js").read_text()
           library_imports = (root / "library-imports.js").read_text()
@@ -103,15 +106,29 @@ jobs:
           assert './library-imports.js' in app, "browser bootstrap does not install archive/playlist imports"
           assert './library-imports.css' in app, "browser bootstrap does not install archive/playlist styles"
           assert './multiplayer.js' in app and 'installMultiplayerSessions' in app, "browser bootstrap does not install multiplayer setup"
+          assert './shared-session-transport.js' in app and 'installSharedSessionTransport' in app, "browser bootstrap does not attach verified peers to shared authority"
+          assert './collaborative-mixer.js' in app and 'installCollaborativeMixer' in app, "browser bootstrap does not install collaborative mixer bindings"
           assert './mixer-app.js' in app, "browser bootstrap does not start the mixer adapter"
 
           assert '556f1aa2ac889acffd5b2b27163fca10f1901793' in multiplayer, "multiplayer client is not pinned to the reviewed service commit"
           assert 'cdn.jsdelivr.net/gh/moritzbrantner/multiplayer-setup-service@' in multiplayer, "multiplayer client does not consume the reusable service module"
           assert 'topology: "mesh"' in multiplayer, "DJ Party multiplayer does not use the selected mesh topology"
-          assert 'contentSharing: false' in multiplayer, "optional content sharing must remain disabled in the setup slice"
-          assert 'sendContent(' not in multiplayer, "DJ Party setup slice must not send content bytes"
+          assert 'contentSharing: false' in multiplayer, "optional content sharing must remain disabled"
+          assert 'sendContent(' not in multiplayer, "DJ Party must not send content bytes in this slice"
           assert 'participantToken' not in multiplayer, "DJ Party adapter must not copy capability tokens into app state or URLs"
           assert 'DJ_PARTY_SESSION_PROTOCOL' in multiplayer and 'dj-party/session-hello' in multiplayer, "DJ Party peer compatibility handshake is missing"
+
+          assert 'dj-party/shared/request' in shared_session, "guest request protocol is missing"
+          assert 'dj-party/shared/command' in shared_session, "host canonical command protocol is missing"
+          assert 'dj-party/shared/snapshot' in shared_session, "late-join snapshot protocol is missing"
+          assert 'lastRequestSequenceByPeer' in shared_session, "guest request replay protection is missing"
+          assert 'canonicalSequence' in shared_session, "host canonical sequencing is missing"
+          assert 'case "transport"' not in shared_session, "transport commands must stay outside this mixer-only shared slice"
+          assert 'sendApplicationReliable' in shared_transport and 'broadcastApplicationReliable' in shared_transport, "shared transport does not use verified reliable peer links"
+          assert 'compatiblePeers' in shared_transport, "shared transport does not bind to verified DJ Party peers"
+          for control in ['crossfader', 'deck-level', 'tempo', 'key-lock', 'tone']:
+              assert control in shared_session, f"shared mixer protocol is missing {control}"
+          assert 'monitor-' not in collaborative and 'headphone' not in collaborative.lower(), "hardware-local monitoring leaked into shared mixer state"
 
           assert './archive-import.js' in library_imports, "library imports do not reference bounded archive helpers"
           assert 'extractZipLibrary' in library_imports and 'parseM3u' in library_imports, "ZIP/M3U import path is incomplete"
@@ -141,7 +158,7 @@ jobs:
           assert 'phase-sync' in html_path.read_text(), "phase-sync controls missing from Pages HTML"
 
           for asset in [
-              "multiplayer.js", "multiplayer.css",
+              "multiplayer.js", "multiplayer.css", "shared-session.js", "shared-session-transport.js", "collaborative-mixer.js",
               "library.css", "library.js", "library-imports.js", "library-imports.css",
               "archive-import.js", "analysis-cache.js", "mixer-app.js", "monitoring.css",
               "output-routing.js", "effects.js", "effects.css"

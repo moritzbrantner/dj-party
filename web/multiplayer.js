@@ -343,8 +343,9 @@ export function installMultiplayerSessions() {
   return new MultiplayerSessionUi().install();
 }
 
-class MultiplayerSessionUi {
+class MultiplayerSessionUi extends EventTarget {
   constructor() {
+    super();
     this.controller = null;
     this.sessionStatus = document.querySelector(".session-status");
     this.panel = null;
@@ -492,12 +493,17 @@ class MultiplayerSessionUi {
       this.lobbyInput.value = lobby.displayCode ?? lobby.lobbyId ?? this.lobbyInput.value;
       this.persistConfiguration();
       this.renderSession(controller.snapshot());
+      this.dispatchEvent(new CustomEvent("controller-ready", { detail: { controller } }));
     } catch (error) {
       if (controller && this.controller !== controller) {
         return;
       }
-      this.controller?.close();
+      const closing = this.controller;
+      closing?.close();
       this.controller = null;
+      if (closing) {
+        this.dispatchEvent(new CustomEvent("controller-closed", { detail: { controller: closing } }));
+      }
       this.setBusy(false);
       this.renderError(error);
       this.updateTopbar("Local session");
@@ -505,8 +511,12 @@ class MultiplayerSessionUi {
   }
 
   leave() {
-    this.controller?.close();
+    const closing = this.controller;
+    closing?.close();
     this.controller = null;
+    if (closing) {
+      this.dispatchEvent(new CustomEvent("controller-closed", { detail: { controller: closing } }));
+    }
     this.setBusy(false);
     this.inviteCode.textContent = "—";
     this.copyButton.disabled = true;
