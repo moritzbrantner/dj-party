@@ -19,4 +19,4 @@ const multiplayer = installMultiplayerSessions();
 installSharedSessionTransport(multiplayer);
 const mixerModule = await import("./mixer-app.js");
 installCollaborativeMixer();
-await installCollaborativePlayback(mixerModule);
+installCollaborativePlayback(mixerModule);
