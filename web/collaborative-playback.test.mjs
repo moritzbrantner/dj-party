@@ -28,17 +28,19 @@ test("adapter exposes exact local transport only after track identity is known",
     positionSeconds: 12,
     durationSeconds: 240,
     playbackRate: 1,
+    loop: null,
   });
 });
 
-test("adapter rejects remote playback for a different track or active local loop", () => {
+test("adapter rejects remote playback for a different track without treating local loops as a separate authority", () => {
   const mixer = new FakeMixerModule();
   const adapter = new CollaborativePlaybackAdapter({ mixerModule: mixer, coordinator: new FakeCoordinator() });
   adapter.trackContentIds.set("a", TRACK_A);
 
   assert.equal(adapter.canApplyDeckState("a", sharedState(TRACK_B)), false);
   mixer.states.a.loopActive = true;
-  assert.equal(adapter.canApplyDeckState("a", sharedState(TRACK_A)), false);
+  mixer.states.a.loop = { startSeconds: 10, endSeconds: 12, beatCount: 2 };
+  assert.equal(adapter.canApplyDeckState("a", sharedState(TRACK_A)), true);
 });
 
 test("remote playback projects host time while preserving mixer-owned local tempo", async () => {
@@ -61,6 +63,22 @@ test("remote playback projects host time while preserving mixer-owned local temp
   ]);
 });
 
+test("remote loop playback wraps projected host time while preserving mixer-owned local tempo", async () => {
+  const mixer = new FakeMixerModule();
+  const adapter = new CollaborativePlaybackAdapter({ mixerModule: mixer, coordinator: new FakeCoordinator() });
+  adapter.trackContentIds.set("a", TRACK_A);
+
+  const remote = sharedState(TRACK_A, {
+    playing: true,
+    positionSeconds: 11.9,
+    playbackRate: 1,
+    loop: { startSeconds: 10, endSeconds: 12, beatCount: 2 },
+  });
+  assert.equal(await adapter.applyDeckState("a", remote, { elapsedMs: 250 }), true);
+  assert.ok(Math.abs(mixer.applied[0].state.positionSeconds - 10.15) < 1e-9);
+  assert.deepEqual(mixer.applied[0].state.loop, remote.loop);
+});
+
 test("local mixer transport events become shared deck-state submissions", async () => {
   const mixer = new FakeMixerModule();
   const coordinator = new FakeCoordinator();
@@ -79,7 +97,7 @@ test("local mixer transport events become shared deck-state submissions", async 
   adapter.destroy();
 });
 
-test("local loop activation suspends sharing and loop exit reconciles before resuming", async () => {
+test("local loop activation and exit are submitted through the existing shared playback authority", async () => {
   const mixer = new FakeMixerModule();
   const coordinator = new FakeCoordinator();
   const adapter = new CollaborativePlaybackAdapter({ mixerModule: mixer, coordinator });
@@ -87,14 +105,20 @@ test("local loop activation suspends sharing and loop exit reconciles before res
 
   await adapter.install();
   mixer.states.a.loopActive = true;
+  mixer.states.a.loop = { startSeconds: 10, endSeconds: 12, beatCount: 2 };
   mixer.emit("a");
-  assert.equal(coordinator.refreshes, 1);
-  assert.deepEqual(coordinator.submitted, []);
+  assert.deepEqual(coordinator.submitted, [
+    {
+      deckId: "a",
+      state: sharedState(TRACK_A, { loop: { startSeconds: 10, endSeconds: 12, beatCount: 2 } }),
+    },
+  ]);
 
   mixer.states.a.loopActive = false;
+  mixer.states.a.loop = null;
   mixer.emit("a");
-  assert.equal(coordinator.refreshes, 2);
-  assert.deepEqual(coordinator.submitted, [{ deckId: "a", state: sharedState(TRACK_A) }]);
+  assert.deepEqual(coordinator.submitted.at(-1), { deckId: "a", state: sharedState(TRACK_A) });
+  assert.equal(coordinator.refreshes, 0);
   adapter.destroy();
 });
 
@@ -105,6 +129,7 @@ function sharedState(trackContentId, overrides = {}) {
     positionSeconds: 12,
     durationSeconds: 240,
     playbackRate: 1,
+    loop: null,
     ...overrides,
   };
 }
@@ -112,8 +137,8 @@ function sharedState(trackContentId, overrides = {}) {
 class FakeMixerModule {
   constructor() {
     this.states = {
-      a: { playing: false, positionSeconds: 12, durationSeconds: 240, playbackRate: 1, loopActive: false },
-      b: { playing: false, positionSeconds: 0, durationSeconds: 180, playbackRate: 1, loopActive: false },
+      a: { playing: false, positionSeconds: 12, durationSeconds: 240, playbackRate: 1, loopActive: false, loop: null },
+      b: { playing: false, positionSeconds: 0, durationSeconds: 180, playbackRate: 1, loopActive: false, loop: null },
     };
     this.listeners = { a: new Set(), b: new Set() };
     this.applied = [];
