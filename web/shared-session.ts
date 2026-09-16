@@ -56,6 +56,8 @@ export function validateSharedState(value) {
 }
 
 export class SharedSessionCoordinator extends EventTarget {
+  declare canonicalSequence: any;
+  declare ready: any;
   declare lastCanonicalSequence: any;
   declare lastRequestSequenceByPeer: any;
   declare localRequestSequence: any;

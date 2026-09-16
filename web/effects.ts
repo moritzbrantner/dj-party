@@ -75,10 +75,10 @@ export class DeckEffects {
     this.outputNode = null;
 
     this.controls = {
-      low: document.querySelector(`#deck-${id}-low`),
-      mid: document.querySelector(`#deck-${id}-mid`),
-      high: document.querySelector(`#deck-${id}-high`),
-      filter: document.querySelector(`#deck-${id}-filter`),
+      low: document.querySelector<HTMLInputElement>(`#deck-${id}-low`),
+      mid: document.querySelector<HTMLInputElement>(`#deck-${id}-mid`),
+      high: document.querySelector<HTMLInputElement>(`#deck-${id}-high`),
+      filter: document.querySelector<HTMLInputElement>(`#deck-${id}-filter`),
     };
     this.outputs = {
       low: document.querySelector(`#deck-${id}-low-value`),
@@ -88,7 +88,7 @@ export class DeckEffects {
     };
     this.resetButton = document.querySelector(`#deck-${id}-effects-reset`);
 
-    for (const control of Object.values(this.controls)) {
+    for (const control of Object.values(this.controls) as HTMLInputElement[]) {
       control?.addEventListener("input", () => this.apply());
     }
     this.resetButton?.addEventListener("click", () => this.reset());
@@ -130,7 +130,7 @@ export class DeckEffects {
   }
 
   reset() {
-    for (const control of Object.values(this.controls)) {
+    for (const control of Object.values(this.controls) as HTMLInputElement[]) {
       if (control) {
         control.value = "0";
       }

@@ -879,7 +879,7 @@ function refreshSyncButtons() {
 }
 
 function bindCrossfader() {
-  const crossfader = document.querySelector("#crossfader");
+  const crossfader = document.querySelector<HTMLInputElement>("#crossfader");
   const output = document.querySelector("#crossfader-value");
 
   crossfader.addEventListener("input", () => {
@@ -942,11 +942,11 @@ function installMonitoringUi() {
 }
 
 function bindMonitoring() {
-  const chooseHeadphones = document.querySelector("#choose-headphones");
-  const chooseMaster = document.querySelector("#choose-master-output");
-  const mix = document.querySelector("#monitor-mix");
+  const chooseHeadphones = document.querySelector<HTMLButtonElement>("#choose-headphones");
+  const chooseMaster = document.querySelector<HTMLButtonElement>("#choose-master-output");
+  const mix = document.querySelector<HTMLInputElement>("#monitor-mix");
   const mixValue = document.querySelector("#monitor-mix-value");
-  const level = document.querySelector("#monitor-level");
+  const level = document.querySelector<HTMLInputElement>("#monitor-level");
   const levelValue = document.querySelector("#monitor-level-value");
 
   chooseHeadphones.disabled = !state.outputRouter.supportsOutputSelection();
@@ -1019,8 +1019,8 @@ function bindMonitoring() {
 }
 
 function setMonitoringControlsEnabled(enabled) {
-  document.querySelector("#monitor-mix").disabled = !enabled;
-  document.querySelector("#monitor-level").disabled = !enabled;
+  document.querySelector<HTMLInputElement>("#monitor-mix")!.disabled = !enabled;
+  document.querySelector<HTMLInputElement>("#monitor-level")!.disabled = !enabled;
   for (const deck of state.decks.values()) {
     deck.monitorCueButton.disabled = !enabled;
   }

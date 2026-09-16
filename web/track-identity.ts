@@ -32,7 +32,7 @@ function exactArrayBuffer(value) {
     return value;
   }
   if (ArrayBuffer.isView(value)) {
-    return value.buffer.slice(value.byteOffset, value.byteOffset + value.byteLength);
+    return new Uint8Array(value.buffer, value.byteOffset, value.byteLength).slice().buffer;
   }
   return null;
 }

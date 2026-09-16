@@ -278,7 +278,7 @@ function setCheckbox(control, value) {
 }
 
 function nextFrame() {
-  return new Promise((resolve) => {
+  return new Promise<void>((resolve) => {
     if (typeof requestAnimationFrame === "function") {
       requestAnimationFrame(() => resolve());
     } else {

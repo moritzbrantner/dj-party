@@ -26,7 +26,7 @@ export class CollaborativePlaybackAdapter {
   declare trackGenerations: any;
   declare unregisterPlayback: any;
   declare unsubscribers: any;
-  constructor({ mixerModule, coordinator = sharedPlaybackSession } = {}) {
+  constructor({ mixerModule, coordinator = sharedPlaybackSession }: { mixerModule?: any; coordinator?: any } = {}) {
     if (
       !mixerModule ||
       typeof mixerModule.captureDeckTransport !== "function" ||
@@ -158,7 +158,7 @@ export class CollaborativePlaybackAdapter {
     }
     const signal = this.abortController.signal;
     for (const deckId of DECK_IDS) {
-      const fileInput = document.querySelector(`#deck-${deckId}-file`);
+      const fileInput = document.querySelector<HTMLInputElement>(`#deck-${deckId}-file`);
       const dropZone = document.querySelector(`#deck-${deckId}-drop-zone`);
       fileInput?.addEventListener(
         "change",
@@ -316,7 +316,7 @@ function looksLikeAudio(file) {
 }
 
 function nextFrame() {
-  return new Promise((resolve) => {
+  return new Promise<void>((resolve) => {
     if (typeof requestAnimationFrame === "function") {
       requestAnimationFrame(() => resolve());
     } else {

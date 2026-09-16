@@ -49,8 +49,8 @@ function importItem(value) {
   return { file: value, path: "" };
 }
 
-function requestResult(request) {
-  return new Promise((resolve, reject) => {
+function requestResult<T>(request: IDBRequest<T>): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
     request.addEventListener("success", () => resolve(request.result), { once: true });
     request.addEventListener("error", () => reject(request.error ?? new Error("IndexedDB request failed")), {
       once: true,
@@ -58,8 +58,8 @@ function requestResult(request) {
   });
 }
 
-function transactionDone(transaction) {
-  return new Promise((resolve, reject) => {
+function transactionDone(transaction: IDBTransaction): Promise<void> {
+  return new Promise<void>((resolve, reject) => {
     transaction.addEventListener("complete", () => resolve(), { once: true });
     transaction.addEventListener("abort", () => reject(transaction.error ?? new Error("IndexedDB transaction aborted")), {
       once: true,
@@ -262,8 +262,8 @@ class BrowserTrackLibrary {
   }
 
   bindLibraryEvents() {
-    const filesInput = document.querySelector("#library-files");
-    const folderInput = document.querySelector("#library-folder");
+    const filesInput = document.querySelector<HTMLInputElement>("#library-files");
+    const folderInput = document.querySelector<HTMLInputElement>("#library-folder");
 
     for (const input of [filesInput, folderInput]) {
       input?.addEventListener("change", () => {
@@ -299,7 +299,7 @@ class BrowserTrackLibrary {
 
   bindDeckPersistence() {
     for (const id of ["a", "b"]) {
-      const input = document.querySelector(`#deck-${id}-file`);
+      const input = document.querySelector<HTMLInputElement>(`#deck-${id}-file`);
       input?.addEventListener(
         "change",
         () => {
@@ -471,7 +471,7 @@ class BrowserTrackLibrary {
         type: record.type,
         lastModified: record.lastModified,
       });
-      const input = document.querySelector(`#deck-${deckId}-file`);
+      const input = document.querySelector<HTMLInputElement>(`#deck-${deckId}-file`);
       const transfer = createDataTransfer();
       if (!input || !transfer) {
         this.setStatus("This browser cannot hand saved tracks back to the deck picker");
