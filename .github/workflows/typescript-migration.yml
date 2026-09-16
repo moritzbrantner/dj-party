@@ -1,6 +1,8 @@
 name: TypeScript migration codemod
 
 on:
+  pull_request:
+    branches: [main]
   push:
     branches: [chore/typescript-convergence]
   workflow_dispatch:
