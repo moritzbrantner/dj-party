@@ -1,63 +1,111 @@
 import fs from "node:fs";
 import path from "node:path";
-import * as ts from "typescript";
 
 const root = process.cwd();
 const webRoot = path.join(root, "web");
 
-function memberName(member) {
-  const name = member.name;
-  return name && ts.isIdentifier(name) ? name.text : null;
+function matchingBrace(source, open) {
+  let depth = 0;
+  let mode = "code";
+  for (let index = open; index < source.length; index += 1) {
+    const char = source[index];
+    const next = source[index + 1];
+
+    if (mode === "line-comment") {
+      if (char === "\n") mode = "code";
+      continue;
+    }
+    if (mode === "block-comment") {
+      if (char === "*" && next === "/") {
+        mode = "code";
+        index += 1;
+      }
+      continue;
+    }
+    if (mode === "single") {
+      if (char === "\\") index += 1;
+      else if (char === "'") mode = "code";
+      continue;
+    }
+    if (mode === "double") {
+      if (char === "\\") index += 1;
+      else if (char === '"') mode = "code";
+      continue;
+    }
+    if (mode === "template") {
+      if (char === "\\") index += 1;
+      else if (char === "`") mode = "code";
+      continue;
+    }
+
+    if (char === "/" && next === "/") {
+      mode = "line-comment";
+      index += 1;
+      continue;
+    }
+    if (char === "/" && next === "*") {
+      mode = "block-comment";
+      index += 1;
+      continue;
+    }
+    if (char === "'") {
+      mode = "single";
+      continue;
+    }
+    if (char === '"') {
+      mode = "double";
+      continue;
+    }
+    if (char === "`") {
+      mode = "template";
+      continue;
+    }
+    if (char === "{") depth += 1;
+    if (char === "}") {
+      depth -= 1;
+      if (depth === 0) return index;
+    }
+  }
+  throw new Error(`Unbalanced class body at offset ${open}`);
 }
 
-function indentationAt(source, position) {
-  const lineStart = source.lastIndexOf("\n", position - 1) + 1;
-  return source.slice(lineStart, position).match(/^\s*/)?.[0] ?? "";
+function declaredMembers(body) {
+  const names = new Set();
+  for (const match of body.matchAll(/^\s*(?:declare\s+)?([A-Za-z_$][\w$]*)\s*(?::|=|\()/gm)) {
+    names.add(match[1]);
+  }
+  return names;
 }
 
 for (const entry of fs.readdirSync(webRoot).filter((name) => name.endsWith(".ts") && !name.endsWith(".d.ts"))) {
   const filePath = path.join(webRoot, entry);
   let source = fs.readFileSync(filePath, "utf8");
-  const parsed = ts.createSourceFile(filePath, source, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
-  const insertions = [];
-
-  function visit(node) {
-    if (ts.isClassDeclaration(node) || ts.isClassExpression(node)) {
-      const existing = new Set(node.members.map(memberName).filter(Boolean));
-      const used = new Set();
-
-      function collect(current) {
-        if (
-          ts.isPropertyAccessExpression(current) &&
-          current.expression.kind === ts.SyntaxKind.ThisKeyword &&
-          ts.isIdentifier(current.name)
-        ) {
-          used.add(current.name.text);
-        }
-        ts.forEachChild(current, collect);
-      }
-      for (const member of node.members) collect(member);
-
-      const missing = [...used].filter((name) => !existing.has(name)).sort();
-      if (missing.length > 0) {
-        const firstMember = node.members[0];
-        const position = firstMember ? firstMember.getFullStart() : node.end - 1;
-        const classIndent = indentationAt(source, node.getStart(parsed));
-        const memberIndent = `${classIndent}  `;
-        const declaration = `${firstMember ? "" : "\n"}${missing
-          .map((name) => `${memberIndent}declare ${name}: any;`)
-          .join("\n")}\n`;
-        insertions.push({ position, declaration });
-      }
-      return;
-    }
-    ts.forEachChild(node, visit);
+  const classes = [];
+  const classPattern = /\bclass(?:\s+[A-Za-z_$][\w$]*)?(?:\s+extends\s+[^\{]+)?\s*\{/g;
+  let match;
+  while ((match = classPattern.exec(source)) !== null) {
+    const open = source.indexOf("{", match.index);
+    const close = matchingBrace(source, open);
+    classes.push({ open, close });
+    classPattern.lastIndex = close + 1;
   }
 
-  visit(parsed);
-  for (const insertion of insertions.sort((a, b) => b.position - a.position)) {
-    source = `${source.slice(0, insertion.position)}${insertion.declaration}${source.slice(insertion.position)}`;
+  for (const { open, close } of classes.reverse()) {
+    const body = source.slice(open + 1, close);
+    const existing = declaredMembers(body);
+    const assigned = new Set();
+    const assignmentPattern = /\bthis\.([A-Za-z_$][\w$]*)\s*(?:=|\?\?=|\|\|=|&&=|\+=|-=|\*=|\/=|%=|\*\*=|\+\+|--)/g;
+    for (const assignment of body.matchAll(assignmentPattern)) assigned.add(assignment[1]);
+    const missing = [...assigned].filter((name) => !existing.has(name)).sort();
+    if (missing.length === 0) continue;
+
+    const lineStart = source.lastIndexOf("\n", open) + 1;
+    const classIndent = source.slice(lineStart, open).match(/^\s*/)?.[0] ?? "";
+    const memberIndent = `${classIndent}  `;
+    const declarations = `\n${missing.map((name) => `${memberIndent}declare ${name}: any;`).join("\n")}`;
+    source = `${source.slice(0, open + 1)}${declarations}${source.slice(open + 1)}`;
   }
+
   fs.writeFileSync(filePath, source);
 }
 
