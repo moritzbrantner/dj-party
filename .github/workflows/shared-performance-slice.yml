@@ -24,7 +24,7 @@ jobs:
           node-version: "24.20.0"
 
       - name: Apply performance transport slice
-        run: node scripts/apply-shared-performance-slice.mjs
+        run: node scripts/run-shared-performance-slice.mjs
 
       - name: Install web tooling
         run: npm install --no-package-lock --ignore-scripts --no-audit --no-fund
