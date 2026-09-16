@@ -1,10 +1,12 @@
+import { validatePerformanceAction } from "./performance-transport.js";
 import { isTrackContentId } from "./track-identity.js";
 
-export const SHARED_PLAYBACK_PROTOCOL = 2;
+export const SHARED_PLAYBACK_PROTOCOL = 3;
 
 const CLOCK_REQUEST_TYPE = "dj-party/playback/clock-request";
 const CLOCK_RESPONSE_TYPE = "dj-party/playback/clock-response";
 const REQUEST_TYPE = "dj-party/playback/request";
+const PERFORMANCE_REQUEST_TYPE = "dj-party/playback/performance-request";
 const COMMAND_TYPE = "dj-party/playback/command";
 const SNAPSHOT_TYPE = "dj-party/playback/snapshot";
 const SNAPSHOT_REQUEST_TYPE = "dj-party/playback/snapshot-request";
@@ -243,6 +245,59 @@ export class SharedPlaybackCoordinator extends EventTarget {
     }
   }
 
+  submitLocalPerformanceAction(deckId, value) {
+    const action = validatePerformanceAction(value);
+    if (!DECK_IDS.includes(deckId) || !action || !this.transport || !this.playback) {
+      return false;
+    }
+    if (
+      typeof this.playback.canApplyPerformanceAction !== "function" ||
+      typeof this.playback.applyPerformanceAction !== "function" ||
+      !this.playback.canApplyPerformanceAction(deckId, action)
+    ) {
+      return false;
+    }
+    const network = this.transport.snapshot();
+    if (network?.state !== "connected") {
+      return false;
+    }
+
+    if (this.#isHost()) {
+      const state = validateDeckPlaybackState(this.playback.captureState?.()?.[deckId]);
+      if (!state || state.trackContentId !== action.trackContentId) {
+        return false;
+      }
+      this.transport.broadcastApplicationReliable(this.#canonicalize(deckId, state));
+      this.ready = true;
+      this.#emitChange();
+      return true;
+    }
+
+    if (!this.ready || !this.clockReady) {
+      return false;
+    }
+    const host = network.hostParticipantId;
+    if (typeof host !== "string" || !network.compatiblePeerIds?.includes(host)) {
+      return false;
+    }
+    this.localRequestSequence += 1;
+    try {
+      this.transport.sendApplicationReliable(host, {
+        type: PERFORMANCE_REQUEST_TYPE,
+        protocol: SHARED_PLAYBACK_PROTOCOL,
+        requestSequence: this.localRequestSequence,
+        deckId,
+        action,
+      });
+      return true;
+    } catch {
+      this.ready = false;
+      this.snapshotRequestPending = false;
+      this.#emitChange();
+      return false;
+    }
+  }
+
   publishSnapshot() {
     if (!this.#isHost() || !this.transport || !this.playback) {
       return false;
@@ -444,13 +499,17 @@ export class SharedPlaybackCoordinator extends EventTarget {
         this.#sendSnapshot(peerId);
         return;
       }
-      if (data.type !== REQUEST_TYPE || !this.playback) {
+      if ((data.type !== REQUEST_TYPE && data.type !== PERFORMANCE_REQUEST_TYPE) || !this.playback) {
         return;
       }
       const requestSequence = positiveSafeInteger(data.requestSequence);
       const deckId = DECK_IDS.includes(data.deckId) ? data.deckId : null;
-      const state = validateDeckPlaybackState(data.state);
-      if (!requestSequence || !deckId || !state) {
+      if (!requestSequence || !deckId) {
+        return;
+      }
+      const state = data.type === REQUEST_TYPE ? validateDeckPlaybackState(data.state) : null;
+      const action = data.type === PERFORMANCE_REQUEST_TYPE ? validatePerformanceAction(data.action) : null;
+      if ((data.type === REQUEST_TYPE && !state) || (data.type === PERFORMANCE_REQUEST_TYPE && !action)) {
         return;
       }
       const previous = this.lastRequestSequenceByPeer.get(peerId) ?? 0;
@@ -458,6 +517,31 @@ export class SharedPlaybackCoordinator extends EventTarget {
         return;
       }
       this.lastRequestSequenceByPeer.set(peerId, requestSequence);
+
+      if (action) {
+        if (
+          typeof this.playback.canApplyPerformanceAction !== "function" ||
+          typeof this.playback.applyPerformanceAction !== "function" ||
+          !this.playback.canApplyPerformanceAction(deckId, action)
+        ) {
+          return;
+        }
+        const applied = await this.playback.applyPerformanceAction(deckId, action, {
+          source: "remote-request",
+          peerId,
+        });
+        if (applied === false) {
+          return;
+        }
+        const canonicalState = validateDeckPlaybackState(this.playback.captureState?.()?.[deckId]);
+        if (!canonicalState || canonicalState.trackContentId !== action.trackContentId) {
+          return;
+        }
+        this.transport.broadcastApplicationReliable(this.#canonicalize(deckId, canonicalState));
+        this.#emitChange();
+        return;
+      }
+
       if (!this.playback.canApplyDeckState(deckId, state)) {
         return;
       }

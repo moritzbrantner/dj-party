@@ -65,6 +65,7 @@ class Deck {
   declare monitorCueButton: any;
   declare objectUrl: any;
   declare performance: any;
+  declare performanceTransportListeners: any;
   declare platter: any;
   declare playButton: any;
   declare resizeObserver: any;
@@ -97,6 +98,7 @@ class Deck {
     this.baseBpm = null;
     this.activeLoop = null;
     this.animationFrame = null;
+    this.performanceTransportListeners = new Set();
 
     this.fileInput = document.querySelector(`#deck-${id}-file`);
     this.dropZone = document.querySelector(`#deck-${id}-drop-zone`);
@@ -202,9 +204,10 @@ class Deck {
         return;
       }
 
-      this.audio.currentTime = Math.min(this.cue.seconds(), this.audio.duration || this.cue.seconds());
-      this.enforceLoop();
-      this.updateProgress();
+      this.performance.seekTransportTarget(
+        Math.min(this.cue.seconds(), this.audio.duration || this.cue.seconds()),
+        { source: "cue", share: true },
+      );
     });
 
     this.monitorCueButton.addEventListener("click", () => {
@@ -315,6 +318,20 @@ class Deck {
       this.restartButton.disabled = true;
       this.setCueButton.disabled = true;
     });
+  }
+
+  notifyPerformanceTransport(action) {
+    for (const listener of this.performanceTransportListeners) {
+      listener(action);
+    }
+  }
+
+  subscribePerformanceTransport(listener) {
+    if (typeof listener !== "function") {
+      return () => {};
+    }
+    this.performanceTransportListeners.add(listener);
+    return () => this.performanceTransportListeners.delete(listener);
   }
 
   loadFile(file) {
@@ -1160,6 +1177,25 @@ window.addEventListener("beforeunload", () => {
     deck.destroy();
   }
 });
+
+export function subscribeDeckPerformanceTransport(deckId, listener) {
+  const deck = state.decks.get(deckId);
+  return deck?.subscribePerformanceTransport(listener) ?? (() => {});
+}
+
+export async function applyDeckPerformanceAction(deckId, action) {
+  const deck = state.decks.get(deckId);
+  if (!deck || !action || typeof action !== "object") {
+    return false;
+  }
+  if (action.kind === "beat-jump") {
+    return deck.performance.beatJump(action.delta, { share: false }) === true;
+  }
+  if (action.kind === "seek") {
+    return deck.performance.seekTransportTarget(action.positionSeconds, { share: false }) === true;
+  }
+  return false;
+}
 
 export function captureDeckTransport(deckId) {
   const deck = state.decks.get(deckId);

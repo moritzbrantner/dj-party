@@ -1,3 +1,4 @@
+import { validatePerformanceAction } from "./performance-transport.js";
 import { sharedPlaybackSession } from "./shared-playback.js";
 import { trackContentIdForFile } from "./track-identity.js";
 
@@ -20,6 +21,7 @@ export class CollaborativePlaybackAdapter {
   declare applyingRemote: any;
   declare coordinator: any;
   declare mixerModule: any;
+  declare performanceSuppression: any;
   declare status: any;
   declare trackContentIds: any;
   declare trackGenerations: any;
@@ -39,6 +41,7 @@ export class CollaborativePlaybackAdapter {
     this.trackContentIds = new Map(DECK_IDS.map((deckId) => [deckId, null]));
     this.trackGenerations = new Map(DECK_IDS.map((deckId) => [deckId, 0]));
     this.applyingRemote = new Set();
+    this.performanceSuppression = new Map();
     this.unsubscribers = [];
     this.unregisterPlayback = null;
     this.abortController = new AbortController();
@@ -107,6 +110,37 @@ export class CollaborativePlaybackAdapter {
     }
   }
 
+  canApplyPerformanceAction(deckId, value) {
+    const action = validatePerformanceAction(value);
+    if (!action || !DECK_IDS.includes(deckId) || this.trackContentIds.get(deckId) !== action.trackContentId) {
+      return false;
+    }
+    const local = this.mixerModule.captureDeckTransport(deckId);
+    if (!local || !Number.isFinite(local.durationSeconds) || local.durationSeconds <= 0) {
+      return false;
+    }
+    return action.kind !== "seek" || action.positionSeconds <= local.durationSeconds;
+  }
+
+  async applyPerformanceAction(deckId, value) {
+    const action = validatePerformanceAction(value);
+    if (
+      !action ||
+      !this.canApplyPerformanceAction(deckId, action) ||
+      typeof this.mixerModule.applyDeckPerformanceAction !== "function"
+    ) {
+      return false;
+    }
+
+    this.applyingRemote.add(deckId);
+    try {
+      return (await this.mixerModule.applyDeckPerformanceAction(deckId, action)) === true;
+    } finally {
+      await nextTask();
+      this.applyingRemote.delete(deckId);
+    }
+  }
+
   destroy() {
     this.abortController.abort();
     for (const unsubscribe of this.unsubscribers.splice(0)) {
@@ -120,6 +154,12 @@ export class CollaborativePlaybackAdapter {
     for (const deckId of DECK_IDS) {
       const unsubscribe = this.mixerModule.subscribeDeckTransport(deckId, () => this.#localTransportChanged(deckId));
       this.unsubscribers.push(unsubscribe);
+      if (typeof this.mixerModule.subscribeDeckPerformanceTransport === "function") {
+        const unsubscribePerformance = this.mixerModule.subscribeDeckPerformanceTransport(deckId, (action) =>
+          this.#localPerformanceChanged(deckId, action),
+        );
+        this.unsubscribers.push(unsubscribePerformance);
+      }
 
       if (typeof document !== "undefined") {
         const signal = this.abortController.signal;
@@ -136,7 +176,28 @@ export class CollaborativePlaybackAdapter {
     }
     const state = this.#sharedStateForDeck(deckId);
     if (state) {
-      this.coordinator.submitLocalDeckState(deckId, state);
+      const suppressed = this.performanceSuppression.get(deckId);
+      this.performanceSuppression.delete(deckId);
+      if (!suppressed || !sameSharedState(suppressed, state)) {
+        this.coordinator.submitLocalDeckState(deckId, state);
+      }
+    }
+    this.#renderStatus(this.coordinator.snapshot());
+  }
+
+  #localPerformanceChanged(deckId, value) {
+    if (this.applyingRemote.has(deckId)) {
+      return;
+    }
+    const trackContentId = this.trackContentIds.get(deckId);
+    const state = this.#sharedStateForDeck(deckId);
+    const action = validatePerformanceAction({ ...value, trackContentId });
+    if (!state || !action || typeof this.coordinator.submitLocalPerformanceAction !== "function") {
+      return;
+    }
+    const submitted = this.coordinator.submitLocalPerformanceAction(deckId, action) === true;
+    if (submitted) {
+      this.performanceSuppression.set(deckId, state);
     }
     this.#renderStatus(this.coordinator.snapshot());
   }
@@ -182,6 +243,7 @@ export class CollaborativePlaybackAdapter {
     // Clear synchronously in the capture phase so any pause/seek events emitted by
     // the existing deck loader cannot be attributed to the previous track.
     this.trackContentIds.set(deckId, null);
+    this.performanceSuppression.delete(deckId);
     this.coordinator.refreshLocalTracks();
 
     const contentId = await trackContentIdForFile(file);
@@ -296,6 +358,27 @@ export class CollaborativePlaybackAdapter {
       ? `Shared playback aligned · sequence ${snapshot.canonicalSequence}`
       : "Shared playback waiting for host state";
   }
+}
+
+function sameSharedState(left, right) {
+  if (!left || !right) {
+    return false;
+  }
+  const sameLoop =
+    left.loop === right.loop ||
+    (left.loop &&
+      right.loop &&
+      left.loop.beatCount === right.loop.beatCount &&
+      Math.abs(left.loop.startSeconds - right.loop.startSeconds) < 1e-6 &&
+      Math.abs(left.loop.endSeconds - right.loop.endSeconds) < 1e-6);
+  return (
+    left.trackContentId === right.trackContentId &&
+    left.playing === right.playing &&
+    Math.abs(left.positionSeconds - right.positionSeconds) < 0.1 &&
+    Math.abs(left.durationSeconds - right.durationSeconds) < 1e-6 &&
+    Math.abs(left.playbackRate - right.playbackRate) < 1e-6 &&
+    Boolean(sameLoop)
+  );
 }
 
 function projectSharedPosition(state, elapsedMs) {

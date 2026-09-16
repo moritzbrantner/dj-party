@@ -149,25 +149,32 @@ export class PerformanceControls {
       return;
     }
     const seconds = this.hotCues.seconds(slot);
-    this.seekTransportTarget(seconds);
+    this.seekTransportTarget(seconds, { source: "hot-cue", share: true });
     this.hotCueStatus.textContent = `Jumped to hot cue ${slot}`;
   }
 
-  beatJump(delta) {
+  beatJump(delta, { share = true } = {}) {
     const duration = this.deck.audio.duration;
     if (!Number.isFinite(duration) || duration <= 0) {
-      return;
+      return false;
     }
 
     const plan = plan_beat_jump(this.deck.beats, this.deck.audio.currentTime, delta, duration);
     try {
       if (!plan.valid()) {
         this.beatJumpStatus.textContent = "Jump would leave the verified beat grid";
-        return;
+        return false;
       }
 
-      this.seekTransportTarget(plan.target_seconds());
+      const moved = this.seekTransportTarget(plan.target_seconds(), { share: false });
+      if (!moved) {
+        return false;
+      }
       this.beatJumpStatus.textContent = `${delta > 0 ? "+" : ""}${delta} beats`;
+      if (share) {
+        this.deck.notifyPerformanceTransport?.({ kind: "beat-jump", delta });
+      }
+      return true;
     } finally {
       plan.free();
     }
@@ -204,7 +211,7 @@ export class PerformanceControls {
       }
 
       this.deck.setPlaybackRate(plan.playback_rate());
-      this.seekTransportTarget(plan.target_seconds());
+      this.seekTransportTarget(plan.target_seconds(), { source: "phase-sync", share: true });
       const alignment = plan.bar_aligned() ? "bar + beat phase" : "beat phase";
       this.deck.timingStatus.textContent = plan.limited()
         ? `Rate-limited ${alignment} match · will drift from ${plan.target_bpm().toFixed(1)} BPM`
@@ -214,9 +221,9 @@ export class PerformanceControls {
     }
   }
 
-  seekTransportTarget(seconds) {
+  seekTransportTarget(seconds, { source = null, share = false } = {}) {
     if (!Number.isFinite(seconds)) {
-      return;
+      return false;
     }
 
     if (
@@ -225,8 +232,13 @@ export class PerformanceControls {
     ) {
       this.deck.disableLoop();
     }
-    this.deck.audio.currentTime = Math.min(Math.max(0, seconds), this.deck.audio.duration || seconds);
+    const target = Math.min(Math.max(0, seconds), this.deck.audio.duration || seconds);
+    this.deck.audio.currentTime = target;
     this.deck.updateProgress();
+    if (share && source) {
+      this.deck.notifyPerformanceTransport?.({ kind: "seek", source, positionSeconds: target });
+    }
+    return true;
   }
 
   updatePositionReadout() {
