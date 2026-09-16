@@ -35,12 +35,12 @@ jobs:
       - name: Run browser tests
         run: npm run test:web
 
-      - name: Commit deterministic slice
+      - name: Commit deterministic source slice
         run: |
           git diff --check
-          git add web README.md AGENTS.md .github/workflows/pages.yml
+          git add web README.md AGENTS.md
           if git diff --cached --quiet; then
-            echo "Shared loop slice already applied."
+            echo "Shared loop source slice already applied."
             exit 0
           fi
           git config user.name "github-actions[bot]"
