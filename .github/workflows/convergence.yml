@@ -1,0 +1,59 @@
+name: TypeScript migration convergence
+
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  converge:
+    name: Converge
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Check out DJ Party
+        uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1
+        with:
+          fetch-depth: 0
+
+      - name: Set up Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: "24.20.0"
+
+      - name: Install DJ Party web tooling
+        run: npm install --no-package-lock --ignore-scripts --no-audit --no-fund
+
+      - name: Set up Bun
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version: 1.4.0
+
+      - name: Check out pinned coding-tooling
+        uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1
+        with:
+          repository: moritzbrantner/coding-tooling
+          ref: 5b9768c99c7011f98701ac030adb46a1b678aa59
+          path: .convergence-tool
+
+      - name: Prepare coding-tooling
+        run: |
+          cd .convergence-tool
+          bun install --frozen-lockfile
+          cd ..
+          rm -rf /tmp/coding-tooling
+          mv .convergence-tool /tmp/coding-tooling
+
+      - name: Run convergence loop
+        run: |
+          set +e
+          bun /tmp/coding-tooling/src/cli.ts converge --json | tee convergence.json
+          status=${PIPESTATUS[0]}
+          set -e
+          printf '\n--- convergence worktree diff ---\n'
+          git status --short
+          git diff -- .
+          exit "$status"
