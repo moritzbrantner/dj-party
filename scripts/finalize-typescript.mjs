@@ -1,5 +1,6 @@
 import fs from "node:fs";
 
+// One-shot deterministic repair for the remaining semantic migration errors.
 function replaceOnce(path, before, after) {
   let source = fs.readFileSync(path, "utf8");
   if (!source.includes(before)) throw new Error(`${path}: expected text not found`);
