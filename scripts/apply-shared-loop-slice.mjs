@@ -2,11 +2,14 @@ import fs from "node:fs";
 
 function replaceOnce(path, before, after) {
   let source = fs.readFileSync(path, "utf8");
-  if (source.includes(after)) {
+  if (after && source.includes(after)) {
     return;
   }
   const index = source.indexOf(before);
   if (index < 0) {
+    if (!after) {
+      return;
+    }
     throw new Error(`${path}: expected source fragment not found`);
   }
   source = `${source.slice(0, index)}${after}${source.slice(index + before.length)}`;
