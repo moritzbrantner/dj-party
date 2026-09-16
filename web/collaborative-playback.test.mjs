@@ -32,6 +32,16 @@ test("adapter exposes exact local transport only after track identity is known",
   });
 });
 
+test("active local loop fails closed when its concrete definition is unavailable", () => {
+  const mixer = new FakeMixerModule();
+  const adapter = new CollaborativePlaybackAdapter({ mixerModule: mixer, coordinator: new FakeCoordinator() });
+  adapter.trackContentIds.set("a", TRACK_A);
+  mixer.states.a.loopActive = true;
+  mixer.states.a.loop = null;
+
+  assert.equal(adapter.captureState().a, null);
+});
+
 test("adapter rejects remote playback for a different track without treating local loops as a separate authority", () => {
   const mixer = new FakeMixerModule();
   const adapter = new CollaborativePlaybackAdapter({ mixerModule: mixer, coordinator: new FakeCoordinator() });
