@@ -2,12 +2,9 @@ import fs from "node:fs";
 
 function replaceOnce(path, before, after) {
   let source = fs.readFileSync(path, "utf8");
-  if (after && source.includes(after)) {
-    return;
-  }
   const index = source.indexOf(before);
   if (index < 0) {
-    if (!after) {
+    if (!after || source.includes(after)) {
       return;
     }
     throw new Error(`${path}: expected source fragment not found`);
@@ -173,7 +170,7 @@ replaceOnce(
 replaceOnce(
   "web/collaborative-playback.test.mjs",
   `test("local mixer transport events become shared deck-state submissions", async () => {`,
-  `test("remote loop playback wraps projected host time while preserving mixer-owned local tempo", async () => {\n  const mixer = new FakeMixerModule();\n  const adapter = new CollaborativePlaybackAdapter({ mixerModule: mixer, coordinator: new FakeCoordinator() });\n  adapter.trackContentIds.set("a", TRACK_A);\n\n  const remote = sharedState(TRACK_A, {\n    playing: true,\n    positionSeconds: 11.9,\n    playbackRate: 1,\n    loop: { startSeconds: 10, endSeconds: 12, beatCount: 2 },\n  });\n  assert.equal(await adapter.applyDeckState("a", remote, { elapsedMs: 250 }), true);\n  assert.equal(mixer.applied[0].state.positionSeconds, 10.15);\n  assert.deepEqual(mixer.applied[0].state.loop, remote.loop);\n});\n\ntest("local mixer transport events become shared deck-state submissions", async () => {`,
+  `test("remote loop playback wraps projected host time while preserving mixer-owned local tempo", async () => {\n  const mixer = new FakeMixerModule();\n  const adapter = new CollaborativePlaybackAdapter({ mixerModule: mixer, coordinator: new FakeCoordinator() });\n  adapter.trackContentIds.set("a", TRACK_A);\n\n  const remote = sharedState(TRACK_A, {\n    playing: true,\n    positionSeconds: 11.9,\n    playbackRate: 1,\n    loop: { startSeconds: 10, endSeconds: 12, beatCount: 2 },\n  });\n  assert.equal(await adapter.applyDeckState("a", remote, { elapsedMs: 250 }), true);\n  assert.ok(Math.abs(mixer.applied[0].state.positionSeconds - 10.15) < 1e-9);\n  assert.deepEqual(mixer.applied[0].state.loop, remote.loop);\n});\n\ntest("local mixer transport events become shared deck-state submissions", async () => {`,
 );
 replaceOnce(
   "web/collaborative-playback.test.mjs",
