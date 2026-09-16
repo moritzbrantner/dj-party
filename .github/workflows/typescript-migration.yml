@@ -12,7 +12,7 @@ permissions:
 
 jobs:
   migrate:
-    name: Declare migrated class state
+    name: Finish semantic TypeScript migration
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -33,6 +33,9 @@ jobs:
       - name: Declare only observed class state
         run: node scripts/declare-typescript-state.mjs
 
+      - name: Type concrete browser and protocol boundaries
+        run: node scripts/fix-typescript-boundaries.mjs
+
       - name: Verify generated patch shape
         run: git diff --check
 
@@ -40,13 +43,13 @@ jobs:
         run: |
           git add web tsconfig.json
           if git diff --cached --quiet; then
-            echo "No TypeScript state declarations needed."
-            exit 0
+            echo "No TypeScript migration edits needed."
+          else
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git commit -m "chore: finish semantic TypeScript migration"
+            git push origin HEAD:chore/typescript-convergence
           fi
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git commit -m "chore: declare migrated TypeScript class state"
-          git push origin HEAD:chore/typescript-convergence
 
       - name: Run semantic TypeScript validation
         run: npm run typecheck
