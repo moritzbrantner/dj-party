@@ -26,6 +26,10 @@ export function playlistIdForSource(name, sourceKey = name) {
 }
 
 class LibraryImports {
+  declare databasePromise: any;
+  declare library: any;
+  declare list: any;
+  declare playlists: any;
   constructor(library) {
     this.library = library;
     this.databasePromise = null;

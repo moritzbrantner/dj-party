@@ -81,6 +81,19 @@ export function calculateClockSample({ guestSentAtMs, hostReceivedAtMs, hostSent
 }
 
 export class SharedPlaybackCoordinator extends EventTarget {
+  declare clockOffsetMs: any;
+  declare clockRequestPending: any;
+  declare clockRequestSequence: any;
+  declare clockSampleTarget: any;
+  declare clockSamples: any;
+  declare lastCanonicalSequence: any;
+  declare lastRequestSequenceByPeer: any;
+  declare localRequestSequence: any;
+  declare now: any;
+  declare playback: any;
+  declare snapshotRequestPending: any;
+  declare transport: any;
+  declare transportAbort: any;
   constructor({ now = epochNow, clockSampleTarget = DEFAULT_CLOCK_SAMPLE_TARGET } = {}) {
     super();
     if (!Number.isSafeInteger(clockSampleTarget) || clockSampleTarget < 1 || clockSampleTarget > 8) {

@@ -51,6 +51,18 @@ function effectControl(deckId, name, label, initialValue) {
 }
 
 export class DeckEffects {
+  declare context: any;
+  declare controls: any;
+  declare dryGainNode: any;
+  declare filterNode: any;
+  declare highNode: any;
+  declare id: any;
+  declare lowNode: any;
+  declare midNode: any;
+  declare outputNode: any;
+  declare outputs: any;
+  declare resetButton: any;
+  declare wetGainNode: any;
   constructor(id) {
     this.id = id;
     this.context = null;

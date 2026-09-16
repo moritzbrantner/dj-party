@@ -13,6 +13,12 @@ export function installCollaborativeMixer() {
 }
 
 export class CollaborativeMixerControls {
+  declare abortController: any;
+  declare controls: any;
+  declare coordinator: any;
+  declare status: any;
+  declare suppressLocal: any;
+  declare unregisterMixer: any;
   constructor({ coordinator = sharedSession } = {}) {
     this.coordinator = coordinator;
     this.controls = null;

@@ -71,6 +71,8 @@ function transactionDone(transaction) {
 }
 
 class TrackStore {
+  declare databasePromise: any;
+  declare indexedDb: any;
   constructor(indexedDb = globalThis.indexedDB) {
     this.indexedDb = indexedDb;
     this.databasePromise = null;
@@ -169,6 +171,16 @@ class TrackStore {
 }
 
 class BrowserTrackLibrary {
+  declare deckPersistenceSkips: any;
+  declare importSurface: any;
+  declare list: any;
+  declare ready: any;
+  declare records: any;
+  declare search: any;
+  declare searchText: any;
+  declare status: any;
+  declare storageReady: any;
+  declare store: any;
   constructor() {
     this.store = new TrackStore();
     this.records = [];

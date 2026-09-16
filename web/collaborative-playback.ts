@@ -16,6 +16,16 @@ export function installCollaborativePlayback(mixerModule, { coordinator = shared
 }
 
 export class CollaborativePlaybackAdapter {
+  declare abortController: any;
+  declare applyingRemote: any;
+  declare coordinator: any;
+  declare loopSuspended: any;
+  declare mixerModule: any;
+  declare status: any;
+  declare trackContentIds: any;
+  declare trackGenerations: any;
+  declare unregisterPlayback: any;
+  declare unsubscribers: any;
   constructor({ mixerModule, coordinator = sharedPlaybackSession } = {}) {
     if (
       !mixerModule ||

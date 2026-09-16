@@ -110,6 +110,9 @@ export function isDjPartySessionHello(value) {
 }
 
 export class DjPartyMultiplayerSession extends EventTarget {
+  declare abortController: any;
+  declare compatiblePeers: any;
+  declare setupGeneration: any;
   constructor({
     apiBase,
     loadClient = loadMultiplayerClientModules,
@@ -344,6 +347,18 @@ export function installMultiplayerSessions() {
 }
 
 class MultiplayerSessionUi extends EventTarget {
+  declare apiInput: any;
+  declare copyButton: any;
+  declare hostButton: any;
+  declare inviteCode: any;
+  declare joinButton: any;
+  declare leaveButton: any;
+  declare lobbyInput: any;
+  declare maxParticipants: any;
+  declare panel: any;
+  declare peerStatus: any;
+  declare sessionStatus: any;
+  declare status: any;
   constructor() {
     super();
     this.controller = null;

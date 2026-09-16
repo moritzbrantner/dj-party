@@ -1,4 +1,11 @@
 export class AudioOutputRouter extends EventTarget {
+  declare context: any;
+  declare handleDeviceChange: any;
+  declare headphoneDeviceId: any;
+  declare masterDeviceId: any;
+  declare monitorAudio: any;
+  declare monitorDestination: any;
+  declare monitorMasterGain: any;
   constructor() {
     super();
     this.context = null;

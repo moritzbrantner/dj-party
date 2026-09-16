@@ -8,6 +8,18 @@ import {
 const HOT_CUE_SLOTS = [1, 2, 3, 4];
 
 export class PerformanceControls {
+  declare beatJumpButtons: any;
+  declare beatJumpControls: any;
+  declare beatJumpStatus: any;
+  declare beatPosition: any;
+  declare deck: any;
+  declare getOtherDeck: any;
+  declare hotCueButtons: any;
+  declare hotCueClear: any;
+  declare hotCueControls: any;
+  declare hotCueStatus: any;
+  declare hotCues: any;
+  declare phaseSyncButton: any;
   constructor(deck, getOtherDeck) {
     this.deck = deck;
     this.getOtherDeck = getOtherDeck;

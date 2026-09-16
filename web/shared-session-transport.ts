@@ -62,6 +62,10 @@ export function installSharedSessionTransport(multiplayerUi) {
 }
 
 export class MultiplayerSharedTransport extends EventTarget {
+  declare abortController: any;
+  declare controller: any;
+  declare knownCompatible: any;
+  declare session: any;
   constructor(controller) {
     super();
     if (!controller?.session || typeof controller.snapshot !== "function") {
