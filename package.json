@@ -1,0 +1,16 @@
+{
+  "name": "dj-party",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=24.20.0"
+  },
+  "scripts": {
+    "build:web": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test:web": "bash scripts/test-web.sh"
+  },
+  "devDependencies": {
+    "typescript": "7.0.2"
+  }
+}
