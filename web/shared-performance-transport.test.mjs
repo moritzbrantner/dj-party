@@ -38,11 +38,11 @@ test("host replays guest beat-jump intent before broadcasting canonical playback
     protocol: SHARED_PLAYBACK_PROTOCOL,
     requestSequence: 1,
     deckId: "a",
-    action: { trackContentId: TRACK, kind: "beat-jump", delta: 4 },
+    action: { trackContentId: TRACK, kind: "beat-jump", delta: 4, originPositionSeconds: 12 },
   });
   await tick();
 
-  assert.deepEqual(playback.actions, [{ deckId: "a", action: { trackContentId: TRACK, kind: "beat-jump", delta: 4 } }]);
+  assert.deepEqual(playback.actions, [{ deckId: "a", action: { trackContentId: TRACK, kind: "beat-jump", delta: 4, originPositionSeconds: 12 } }]);
   assert.equal(transport.broadcasts.length, 1);
   assert.equal(transport.broadcasts[0].type, "dj-party/playback/command");
   assert.equal(transport.broadcasts[0].state.positionSeconds, 16);
@@ -52,7 +52,7 @@ test("host replays guest beat-jump intent before broadcasting canonical playback
     protocol: SHARED_PLAYBACK_PROTOCOL,
     requestSequence: 1,
     deckId: "a",
-    action: { trackContentId: TRACK, kind: "beat-jump", delta: 8 },
+    action: { trackContentId: TRACK, kind: "beat-jump", delta: 8, originPositionSeconds: 12 },
   });
   await tick();
   assert.equal(playback.actions.length, 1);
@@ -66,11 +66,11 @@ test("collaborative adapter submits one semantic action and suppresses its dupli
   await adapter.install();
 
   mixer.states.a.positionSeconds = 20;
-  mixer.emitPerformance("a", { kind: "beat-jump", delta: 4 });
+  mixer.emitPerformance("a", { kind: "beat-jump", delta: 4, originPositionSeconds: 20 });
   mixer.emitTransport("a");
 
   assert.deepEqual(coordinator.performance, [
-    { deckId: "a", action: { trackContentId: TRACK, kind: "beat-jump", delta: 4 } },
+    { deckId: "a", action: { trackContentId: TRACK, kind: "beat-jump", delta: 4, originPositionSeconds: 20 } },
   ]);
   assert.deepEqual(coordinator.states, []);
   adapter.destroy();
@@ -143,7 +143,7 @@ class FakePlayback {
 
   async applyPerformanceAction(deckId, action) {
     this.actions.push({ deckId, action });
-    if (action.kind === "beat-jump") this.state.positionSeconds += action.delta;
+    if (action.kind === "beat-jump") this.state.positionSeconds = action.originPositionSeconds + action.delta;
     if (action.kind === "seek") this.state.positionSeconds = action.positionSeconds;
     return true;
   }

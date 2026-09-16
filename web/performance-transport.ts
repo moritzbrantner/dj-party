@@ -11,7 +11,16 @@ export function validatePerformanceAction(value) {
 
   if (value.kind === "beat-jump") {
     const delta = Number.isSafeInteger(value.delta) && BEAT_JUMP_DELTAS.has(value.delta) ? value.delta : null;
-    return delta === null ? null : { trackContentId: value.trackContentId, kind: "beat-jump", delta };
+    const originPositionSeconds =
+      typeof value.originPositionSeconds === "number" &&
+      Number.isFinite(value.originPositionSeconds) &&
+      value.originPositionSeconds >= 0 &&
+      value.originPositionSeconds <= MAX_TRACK_SECONDS
+        ? value.originPositionSeconds
+        : null;
+    return delta === null || originPositionSeconds === null
+      ? null
+      : { trackContentId: value.trackContentId, kind: "beat-jump", delta, originPositionSeconds };
   }
 
   if (value.kind === "seek") {

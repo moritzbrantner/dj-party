@@ -7,11 +7,12 @@ const TRACK = "a".repeat(64);
 
 test("performance actions are exact-track, bounded, and normalized", () => {
   assert.deepEqual(
-    validatePerformanceAction({ trackContentId: TRACK, kind: "beat-jump", delta: 4, slot: 2 }),
-    { trackContentId: TRACK, kind: "beat-jump", delta: 4 },
+    validatePerformanceAction({ trackContentId: TRACK, kind: "beat-jump", delta: 4, originPositionSeconds: 12, slot: 2 }),
+    { trackContentId: TRACK, kind: "beat-jump", delta: 4, originPositionSeconds: 12 },
   );
-  assert.equal(validatePerformanceAction({ trackContentId: TRACK, kind: "beat-jump", delta: 5 }), null);
-  assert.equal(validatePerformanceAction({ trackContentId: "A".repeat(64), kind: "beat-jump", delta: 4 }), null);
+  assert.equal(validatePerformanceAction({ trackContentId: TRACK, kind: "beat-jump", delta: 4 }), null);
+  assert.equal(validatePerformanceAction({ trackContentId: TRACK, kind: "beat-jump", delta: 5, originPositionSeconds: 12 }), null);
+  assert.equal(validatePerformanceAction({ trackContentId: "A".repeat(64), kind: "beat-jump", delta: 4, originPositionSeconds: 12 }), null);
 
   assert.deepEqual(
     validatePerformanceAction({

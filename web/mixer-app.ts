@@ -1189,7 +1189,10 @@ export async function applyDeckPerformanceAction(deckId, action) {
     return false;
   }
   if (action.kind === "beat-jump") {
-    return deck.performance.beatJump(action.delta, { share: false }) === true;
+    return deck.performance.beatJump(action.delta, {
+      share: false,
+      originPositionSeconds: action.originPositionSeconds,
+    }) === true;
   }
   if (action.kind === "seek") {
     return deck.performance.seekTransportTarget(action.positionSeconds, { share: false }) === true;

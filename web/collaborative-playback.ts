@@ -119,7 +119,9 @@ export class CollaborativePlaybackAdapter {
     if (!local || !Number.isFinite(local.durationSeconds) || local.durationSeconds <= 0) {
       return false;
     }
-    return action.kind !== "seek" || action.positionSeconds <= local.durationSeconds;
+    return action.kind === "seek"
+      ? action.positionSeconds <= local.durationSeconds
+      : action.originPositionSeconds <= local.durationSeconds;
   }
 
   async applyPerformanceAction(deckId, value) {

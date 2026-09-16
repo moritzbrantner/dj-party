@@ -153,13 +153,17 @@ export class PerformanceControls {
     this.hotCueStatus.textContent = `Jumped to hot cue ${slot}`;
   }
 
-  beatJump(delta, { share = true } = {}) {
+  beatJump(delta, { share = true, originPositionSeconds = this.deck.audio.currentTime } = {}) {
     const duration = this.deck.audio.duration;
     if (!Number.isFinite(duration) || duration <= 0) {
       return false;
     }
 
-    const plan = plan_beat_jump(this.deck.beats, this.deck.audio.currentTime, delta, duration);
+    if (!Number.isFinite(originPositionSeconds) || originPositionSeconds < 0 || originPositionSeconds > duration) {
+      return false;
+    }
+
+    const plan = plan_beat_jump(this.deck.beats, originPositionSeconds, delta, duration);
     try {
       if (!plan.valid()) {
         this.beatJumpStatus.textContent = "Jump would leave the verified beat grid";
@@ -172,7 +176,7 @@ export class PerformanceControls {
       }
       this.beatJumpStatus.textContent = `${delta > 0 ? "+" : ""}${delta} beats`;
       if (share) {
-        this.deck.notifyPerformanceTransport?.({ kind: "beat-jump", delta });
+        this.deck.notifyPerformanceTransport?.({ kind: "beat-jump", delta, originPositionSeconds });
       }
       return true;
     } finally {
