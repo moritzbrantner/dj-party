@@ -24,7 +24,9 @@ jobs:
           node-version: "24.20.0"
 
       - name: Apply performance transport slice
-        run: node scripts/run-shared-performance-slice.mjs
+        run: |
+          node scripts/run-shared-performance-slice.mjs
+          node scripts/harden-shared-performance-slice.mjs
 
       - name: Install web tooling
         run: npm install --no-package-lock --ignore-scripts --no-audit --no-fund
@@ -45,5 +47,5 @@ jobs:
           fi
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git commit -m "feat: synchronize performance transport intents"
+          git commit -m "fix: replay beat jumps from initiating playhead"
           git push origin HEAD:feat/shared-performance-transport
