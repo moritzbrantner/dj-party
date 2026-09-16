@@ -81,7 +81,6 @@ export function calculateClockSample({ guestSentAtMs, hostReceivedAtMs, hostSent
 }
 
 export class SharedPlaybackCoordinator extends EventTarget {
-  declare clockOffsetMs: any;
   declare blockedDeckIds: any;
   declare canonicalSequence: any;
   declare clockOffsetMs: any;

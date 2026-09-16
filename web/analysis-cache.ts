@@ -49,7 +49,7 @@ export async function writeCachedTrackAnalysis(record) {
   await transactionDone(write);
 
   const read = database.transaction(ANALYSIS_STORE, "readonly");
-  const all = await requestResult(read.objectStore(ANALYSIS_STORE).getAll());
+  const all = await requestResult<any[]>(read.objectStore(ANALYSIS_STORE).getAll());
   await transactionDone(read);
 
   if (all.length > MAX_CACHE_ENTRIES) {

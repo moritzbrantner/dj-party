@@ -123,7 +123,7 @@ class TrackStore {
     const database = await this.open();
     const transaction = database.transaction(TRACK_STORE, "readwrite");
     const store = transaction.objectStore(TRACK_STORE);
-    const existingIds = new Set((await requestResult(store.getAllKeys())).map(String));
+    const existingIds = new Set((await requestResult<IDBValidKey[]>(store.getAllKeys())).map(String));
     const added = [];
     const skipped = [];
 
