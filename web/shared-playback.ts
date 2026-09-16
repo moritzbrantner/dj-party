@@ -1,6 +1,6 @@
 import { isTrackContentId } from "./track-identity.js";
 
-export const SHARED_PLAYBACK_PROTOCOL = 1;
+export const SHARED_PLAYBACK_PROTOCOL = 2;
 
 const CLOCK_REQUEST_TYPE = "dj-party/playback/clock-request";
 const CLOCK_RESPONSE_TYPE = "dj-party/playback/clock-response";
@@ -15,6 +15,7 @@ const MAX_MESSAGE_AGE_MS = 10_000;
 const MAX_CLOCK_RTT_MS = 5_000;
 const MIN_PLAYBACK_RATE = 0.84;
 const MAX_PLAYBACK_RATE = 1.16;
+const LOOP_BEAT_COUNTS = new Set([1, 2, 4, 8]);
 
 export function validateDeckPlaybackState(value) {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
@@ -34,12 +35,17 @@ export function validateDeckPlaybackState(value) {
   ) {
     return null;
   }
+  const loop = validateLoopState(value.loop, durationSeconds);
+  if (loop === undefined) {
+    return null;
+  }
   return {
     trackContentId: value.trackContentId,
     playing: value.playing,
     positionSeconds,
     durationSeconds,
     playbackRate,
+    loop,
   };
 }
 
@@ -463,7 +469,11 @@ export class SharedPlaybackCoordinator extends EventTarget {
       if (applied === false) {
         return;
       }
-      this.transport.broadcastApplicationReliable(this.#canonicalize(deckId, state));
+      const canonicalState = validateDeckPlaybackState(this.playback.captureState()?.[deckId]);
+      if (!canonicalState) {
+        return;
+      }
+      this.transport.broadcastApplicationReliable(this.#canonicalize(deckId, canonicalState));
       this.#emitChange();
       return;
     }
@@ -693,6 +703,22 @@ function epochNow() {
     return globalThis.performance.timeOrigin + globalThis.performance.now();
   }
   return Date.now();
+}
+
+function validateLoopState(value, durationSeconds) {
+  if (value == null) {
+    return null;
+  }
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return undefined;
+  }
+  const startSeconds = finiteRange(value.startSeconds, 0, durationSeconds);
+  const endSeconds = finiteRange(value.endSeconds, 0, durationSeconds);
+  const beatCount = Number.isSafeInteger(value.beatCount) && LOOP_BEAT_COUNTS.has(value.beatCount) ? value.beatCount : null;
+  if (startSeconds === null || endSeconds === null || beatCount === null || endSeconds <= startSeconds) {
+    return undefined;
+  }
+  return { startSeconds, endSeconds, beatCount };
 }
 
 function finiteTimestamp(value) {

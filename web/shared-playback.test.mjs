@@ -27,6 +27,7 @@ function deckState(trackContentId = TRACK_A, overrides = {}) {
     positionSeconds: 12,
     durationSeconds: 240,
     playbackRate: 1,
+    loop: null,
     ...overrides,
   };
 }
@@ -40,6 +41,20 @@ test("playback state is bounded and requires exact content identity", () => {
   assert.equal(validateDeckPlaybackState(deckState("A".repeat(64))), null);
   assert.equal(validateDeckPlaybackState(deckState(TRACK_A, { playbackRate: 1.5 })), null);
   assert.equal(validateDeckPlaybackState(deckState(TRACK_A, { positionSeconds: 241 })), null);
+  assert.deepEqual(
+    validateDeckPlaybackState(
+      deckState(TRACK_A, { loop: { startSeconds: 12, endSeconds: 14, beatCount: 2 } }),
+    ),
+    deckState(TRACK_A, { loop: { startSeconds: 12, endSeconds: 14, beatCount: 2 } }),
+  );
+  assert.equal(
+    validateDeckPlaybackState(deckState(TRACK_A, { loop: { startSeconds: 12, endSeconds: 14, beatCount: 3 } })),
+    null,
+  );
+  assert.equal(
+    validateDeckPlaybackState(deckState(TRACK_A, { loop: { startSeconds: 12, endSeconds: 241, beatCount: 2 } })),
+    null,
+  );
 });
 
 test("clock sample uses NTP-style midpoint offset and rejects excessive RTT", () => {
@@ -60,7 +75,13 @@ test("host sequences local playback state without sending track bytes", () => {
   coordinator.registerPlayback(new FakePlayback({ a: TRACK_A }));
   coordinator.attachTransport(transport);
 
-  assert.equal(coordinator.submitLocalDeckState("a", deckState(TRACK_A, { playing: true })), true);
+  assert.equal(
+    coordinator.submitLocalDeckState(
+      "a",
+      deckState(TRACK_A, { playing: true, loop: { startSeconds: 12, endSeconds: 14, beatCount: 2 } }),
+    ),
+    true,
+  );
   assert.deepEqual(transport.broadcasts, [
     {
       type: "dj-party/playback/command",
@@ -68,7 +89,7 @@ test("host sequences local playback state without sending track bytes", () => {
       sequence: 1,
       hostTimeMs: 5000,
       deckId: "a",
-      state: deckState(TRACK_A, { playing: true }),
+      state: deckState(TRACK_A, { playing: true, loop: { startSeconds: 12, endSeconds: 14, beatCount: 2 } }),
     },
   ]);
   assert.equal(JSON.stringify(transport.broadcasts).includes("content"), false);

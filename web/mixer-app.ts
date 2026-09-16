@@ -12,6 +12,8 @@ import init, {
   tempo_percent_for_rate,
 } from "./pkg/dj_party.js";
 
+const SHARED_LOOP_TOLERANCE_SECONDS = 0.02;
+
 const state = {
   audioContext: null,
   decodeContext: null,
@@ -541,21 +543,26 @@ class Deck {
         return;
       }
 
-      this.activeLoop = {
+      this.applyLoopState({
         start: plan.start_seconds(),
         end: plan.end_seconds(),
         beatCount: plan.beat_count(),
-      };
+      });
       this.audio.currentTime = this.activeLoop.start;
-      this.loopOffButton.disabled = false;
-      this.loopStatus.textContent = `${beatCount}-beat loop · ${formatTimePrecise(this.activeLoop.start)}–${formatTimePrecise(this.activeLoop.end)}`;
-      for (const button of this.loopButtons) {
-        button.classList.toggle("is-active", Number(button.dataset.loopBeats) === beatCount);
-      }
       this.updateProgress();
     } finally {
       plan.free();
     }
+  }
+
+  applyLoopState(loop) {
+    this.activeLoop = loop;
+    this.loopOffButton.disabled = false;
+    this.loopStatus.textContent = `${loop.beatCount}-beat loop · ${formatTimePrecise(loop.start)}–${formatTimePrecise(loop.end)}`;
+    for (const button of this.loopButtons) {
+      button.classList.toggle("is-active", Number(button.dataset.loopBeats) === loop.beatCount);
+    }
+    this.drawWaveform();
   }
 
   disableLoop() {
@@ -1167,6 +1174,13 @@ export function captureDeckTransport(deckId) {
     durationSeconds: Number.isFinite(durationSeconds) && durationSeconds > 0 ? durationSeconds : 0,
     playbackRate: Number.isFinite(deck.audio.playbackRate) ? deck.audio.playbackRate : 1,
     loopActive: Boolean(deck.activeLoop),
+    loop: deck.activeLoop
+      ? {
+          startSeconds: deck.activeLoop.start,
+          endSeconds: deck.activeLoop.end,
+          beatCount: deck.activeLoop.beatCount,
+        }
+      : null,
   };
 }
 
@@ -1188,7 +1202,7 @@ export function subscribeDeckTransport(deckId, listener) {
 
 export async function applyDeckTransport(deckId, value, { elapsedMs = 0 } = {}) {
   const deck = state.decks.get(deckId);
-  if (!deck || deck.activeLoop || !value || typeof value !== "object") {
+  if (!deck || !value || typeof value !== "object") {
     return false;
   }
   const duration = Number(deck.audio.duration);
@@ -1209,8 +1223,20 @@ export async function applyDeckTransport(deckId, value, { elapsedMs = 0 } = {}) 
     return false;
   }
 
+  const loop = resolveSharedLoop(deck, value.loop, duration);
+  if (loop === undefined) {
+    return false;
+  }
+
   const projected = position + (value.playing === true ? (elapsedMs / 1000) * playbackRate : 0);
-  const target = Math.min(Math.max(0, projected), Math.max(0, duration - (value.playing === true ? 0.001 : 0)));
+  const target = loop
+    ? projectLoopPosition(projected, loop, value.playing === true)
+    : Math.min(Math.max(0, projected), Math.max(0, duration - (value.playing === true ? 0.001 : 0)));
+  if (loop) {
+    deck.applyLoopState(loop);
+  } else if (deck.activeLoop) {
+    deck.disableLoop();
+  }
   deck.setPlaybackRate(playbackRate);
   deck.audio.currentTime = target;
   deck.updateProgress();
@@ -1221,4 +1247,53 @@ export async function applyDeckTransport(deckId, value, { elapsedMs = 0 } = {}) 
   }
   deck.audio.pause();
   return true;
+}
+
+function resolveSharedLoop(deck, value, durationSeconds) {
+  if (value == null) {
+    return null;
+  }
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return undefined;
+  }
+  const startSeconds = Number(value.startSeconds);
+  const endSeconds = Number(value.endSeconds);
+  const beatCount = Number(value.beatCount);
+  if (
+    !Number.isFinite(startSeconds) ||
+    startSeconds < 0 ||
+    !Number.isFinite(endSeconds) ||
+    endSeconds <= startSeconds ||
+    endSeconds > durationSeconds ||
+    !Number.isSafeInteger(beatCount)
+  ) {
+    return undefined;
+  }
+
+  const plan = plan_beat_loop(deck.beats, startSeconds, beatCount, durationSeconds);
+  try {
+    if (!plan.valid() || plan.beat_count() !== beatCount) {
+      return undefined;
+    }
+    const start = plan.start_seconds();
+    const end = plan.end_seconds();
+    if (
+      Math.abs(start - startSeconds) > SHARED_LOOP_TOLERANCE_SECONDS ||
+      Math.abs(end - endSeconds) > SHARED_LOOP_TOLERANCE_SECONDS
+    ) {
+      return undefined;
+    }
+    return { start, end, beatCount };
+  } finally {
+    plan.free();
+  }
+}
+
+function projectLoopPosition(positionSeconds, loop, playing) {
+  if (!playing) {
+    return Math.min(Math.max(positionSeconds, loop.start), loop.end);
+  }
+  const span = loop.end - loop.start;
+  const offset = ((positionSeconds - loop.start) % span + span) % span;
+  return loop.start + offset;
 }

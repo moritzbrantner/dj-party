@@ -41,7 +41,7 @@ DJ Party is a browser-first DJ application with a Rust core. The long-term direc
 - Track selection remains local. A remote play/pause/seek state may apply only when the receiving deck already has the same exact content identity. Missing or mismatched tracks fail closed and require a fresh host snapshot after the local track changes.
 - Shared playback clock alignment uses bounded request/response samples to estimate the host clock and compensate command transit time. Clock estimation is synchronization metadata only; browser media elements remain the playback mechanism and the host remains a serializer rather than an audio-rendering authority.
 - Playback snapshots are recovery/bootstrap state, not permission to transfer content. Late join/reconnect and canonical sequence gaps require a fresh snapshot before the guest reports aligned playback.
-- Active beat loops remain local in this phase and must block shared playback application/submission rather than silently diverging. Loop definitions and loop lifecycle become shareable only in a later explicit protocol slice.
+- Shared playback protocol v2 may carry a bounded 1/2/4/8-beat loop lifecycle together with exact-track transport state. The receiver must re-derive the requested loop through the local Rust-owned beat-loop planner and fail closed if the local analyzed beat window does not match the transmitted start/end bounds. Networking code must not invent or duplicate beat-loop arithmetic.
 - Cue/hot-cue/beat-jump definitions remain local. Their resulting playhead seek may be represented by bounded shared transport state only when exact track identity and clock requirements hold.
 - Physical headphone/master output routing and monitor cue/mix/level always remain local hardware policy and never enter mixer or playback snapshots.
 - Content sharing remains disabled; optional asset transfer must be explicitly user-approved and content-verified in a later phase.
@@ -63,8 +63,8 @@ The browser app is acceptable when all of these hold:
 11. multiplayer setup consumes an exact-commit reusable service client, uses mesh topology, keeps content sharing disabled, and never exposes participant capability tokens in DJ Party state/URLs
 12. only verified DJ Party peers can enter either shared application protocol; unverified reliable messages remain outside mixer and playback state
 13. mixer authority covers host canonical sequencing, per-peer request replay protection, snapshot reconciliation, stale/non-host rejection, and feedback-free reuse of existing mixer/effects handlers
-14. playback authority covers exact SHA-256 track identity, host sequencing, per-peer replay protection, bounded three-sample clock alignment, contiguous canonical commands, late-join/gap snapshots, and mismatched-track failure
-15. track bytes, decoded PCM, library storage, capability tokens, physical output routing, monitor controls, and active loop definitions never enter shared playback messages
+14. playback authority covers exact SHA-256 track identity, host sequencing, per-peer replay protection, bounded three-sample clock alignment, contiguous canonical commands, late-join/gap snapshots, mismatched-track failure, and shared loop activation/exit validated against the local Rust beat-loop plan
+15. track bytes, decoded PCM, library storage, capability tokens, physical output routing, monitor controls, cue definitions, and hot-cue definitions never enter shared playback messages
 16. the mixer exposes only the bounded local playback bridge needed to capture/apply media-element transport; networking code must not reach into WebAudio graphs or duplicate transport math
 17. BPM Sync remains tempo-only while Phase Sync explicitly owns the local transport seek needed for phase alignment
 18. per-deck tone controls use Rust-owned parameter plans, exact center filter state is a bypass, and both master and pre-fader cue consume the same tone-shaped signal

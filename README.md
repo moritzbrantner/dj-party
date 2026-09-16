@@ -33,10 +33,10 @@ The app can:
 - share a public lobby/service invite URL while keeping participant capability tokens inside the reusable service client;
 - verify connected peers with a versioned DJ Party hello;
 - synchronize crossfader, deck levels, tempo, key lock, and per-deck EQ/filter state between verified DJ Party peers through a host-sequenced application protocol;
-- synchronize play/pause and playhead position when both peers already have the exact same locally loaded track, verified by the SHA-256 digest of the encoded file bytes;
+- synchronize play/pause, playhead position, and 1/2/4/8-beat loop lifecycle when both peers already have the exact same locally loaded track and a compatible locally analyzed beat window, verified by the SHA-256 digest of the encoded file bytes;
 - estimate the host clock from bounded reliable-channel request/response samples so remote playheads compensate for command transit time without turning the host into an audio server.
 
-Library blobs, playlists, cached analysis metadata, selected track files, decoded PCM, cue/hot-cue definitions, beat-loop definitions, and physical monitor/output routing remain on the device. Multiplayer uses the configured setup service only for lobby/signaling/TURN setup; verified peers exchange bounded DJ Party mixer and playback commands directly over the service-created reliable WebRTC channel. Exact track fingerprints may cross the peer link to prove identity, but track bytes and decoded audio are not transferred.
+Library blobs, playlists, cached analysis metadata, selected track files, decoded PCM, cue/hot-cue definitions, and physical monitor/output routing remain on the device. Multiplayer uses the configured setup service only for lobby/signaling/TURN setup; verified peers exchange bounded DJ Party mixer and playback commands directly over the service-created reliable WebRTC channel. Exact track fingerprints may cross the peer link to prove identity, but track bytes and decoded audio are not transferred.
 
 ## Architecture
 
@@ -86,7 +86,7 @@ Guests estimate the host clock with three bounded request/response samples and r
 
 Tempo remains part of the mixer authority. The playback protocol carries the source playback rate only as timing metadata for playhead projection; applying a remote playback command does not replace the locally converged mixer tempo. Track selection also stays local.
 
-Active beat loops remain intentionally local in this phase. A deck with a local active loop does not participate in shared playback until the loop is disabled, rather than pretending a loop definition has been synchronized. Cue definitions, hot-cue definitions, and content bytes likewise remain local. Their resulting one-off playhead movement can converge through ordinary bounded playback state once the exact-track and clock requirements are satisfied.
+Beat-loop lifecycle is part of shared playback protocol v2. Loop activation carries only the bounded beat count and start/end transport window; every receiving deck must independently reproduce that window through the local Rust-owned beat-loop planner before applying it. Loop exit is represented by a null loop. A mismatched local beat grid fails closed and requires reconciliation rather than accepting remote loop arithmetic. Cue definitions, hot-cue definitions, and content bytes remain local; their resulting one-off playhead movement can still converge through ordinary bounded playback state once the exact-track and clock requirements are satisfied.
 
 Reusable ownership remains explicit:
 
@@ -125,5 +125,6 @@ The generated static site is written to `_site/` and can be served by any local 
 11. Shared-session authority, synchronization, optional asset transfer, and collaborative mixing — current slice
    - host-sequenced shared mixer controls and late-join reconciliation — implemented
    - exact-track identity + clock-aligned play/pause/seek reconciliation — implemented
-   - shared loop lifecycle and richer performance-transport semantics — next
+   - shared loop lifecycle — implemented
+   - richer performance-transport semantics — next
    - optional verified asset transfer and broader collaborative mixing — later

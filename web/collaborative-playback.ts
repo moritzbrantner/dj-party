@@ -19,7 +19,6 @@ export class CollaborativePlaybackAdapter {
   declare abortController: any;
   declare applyingRemote: any;
   declare coordinator: any;
-  declare loopSuspended: any;
   declare mixerModule: any;
   declare status: any;
   declare trackContentIds: any;
@@ -40,7 +39,6 @@ export class CollaborativePlaybackAdapter {
     this.trackContentIds = new Map(DECK_IDS.map((deckId) => [deckId, null]));
     this.trackGenerations = new Map(DECK_IDS.map((deckId) => [deckId, 0]));
     this.applyingRemote = new Set();
-    this.loopSuspended = new Set();
     this.unsubscribers = [];
     this.unregisterPlayback = null;
     this.abortController = new AbortController();
@@ -72,7 +70,7 @@ export class CollaborativePlaybackAdapter {
       return false;
     }
     const local = this.mixerModule.captureDeckTransport(deckId);
-    if (!local || local.loopActive || !Number.isFinite(local.durationSeconds) || local.durationSeconds <= 0) {
+    if (!local || !Number.isFinite(local.durationSeconds) || local.durationSeconds <= 0) {
       return false;
     }
     const tolerance = Math.max(0.25, state.durationSeconds * 0.001);
@@ -90,7 +88,10 @@ export class CollaborativePlaybackAdapter {
 
     // Playback-rate/tempo remains mixer authority. The remote rate is timing metadata
     // used only to project the host playhead through network transit time.
-    const projectedPosition = state.positionSeconds + (state.playing ? (elapsedMs / 1000) * state.playbackRate : 0);
+    const projectedPosition = projectSharedPosition(state, elapsedMs);
+    if (projectedPosition === null) {
+      return false;
+    }
     const localAuthorityState = {
       ...state,
       positionSeconds: Math.min(projectedPosition, state.durationSeconds),
@@ -132,18 +133,6 @@ export class CollaborativePlaybackAdapter {
   #localTransportChanged(deckId) {
     if (this.applyingRemote.has(deckId)) {
       return;
-    }
-    const local = this.mixerModule.captureDeckTransport(deckId);
-    if (local?.loopActive) {
-      if (!this.loopSuspended.has(deckId)) {
-        this.loopSuspended.add(deckId);
-        this.coordinator.refreshLocalTracks();
-      }
-      this.#renderStatus(this.coordinator.snapshot());
-      return;
-    }
-    if (this.loopSuspended.delete(deckId)) {
-      this.coordinator.refreshLocalTracks();
     }
     const state = this.#sharedStateForDeck(deckId);
     if (state) {
@@ -193,7 +182,6 @@ export class CollaborativePlaybackAdapter {
     // Clear synchronously in the capture phase so any pause/seek events emitted by
     // the existing deck loader cannot be attributed to the previous track.
     this.trackContentIds.set(deckId, null);
-    this.loopSuspended.delete(deckId);
     this.coordinator.refreshLocalTracks();
 
     const contentId = await trackContentIdForFile(file);
@@ -239,12 +227,15 @@ export class CollaborativePlaybackAdapter {
     const local = this.mixerModule.captureDeckTransport(deckId);
     if (
       !local ||
-      local.loopActive ||
       !Number.isFinite(local.positionSeconds) ||
       !Number.isFinite(local.durationSeconds) ||
       !Number.isFinite(local.playbackRate) ||
       local.durationSeconds <= 0
     ) {
+      return null;
+    }
+    const loop = local.loopActive ? local.loop : null;
+    if (local.loopActive && !loop) {
       return null;
     }
     return {
@@ -253,6 +244,7 @@ export class CollaborativePlaybackAdapter {
       positionSeconds: Math.min(Math.max(0, local.positionSeconds), local.durationSeconds),
       durationSeconds: local.durationSeconds,
       playbackRate: local.playbackRate,
+      loop,
     };
   }
 
@@ -292,13 +284,8 @@ export class CollaborativePlaybackAdapter {
       this.status.textContent = "Shared playback inactive";
       return;
     }
-    const localLoop = DECK_IDS.some((deckId) => this.mixerModule.captureDeckTransport(deckId)?.loopActive);
-    if (localLoop) {
-      this.status.textContent = "Shared playback paused while a local beat loop is active";
-      return;
-    }
     if (snapshot.blockedDeckIds?.length) {
-      this.status.textContent = `Shared playback needs matching track on Deck ${snapshot.blockedDeckIds.join("/").toUpperCase()}`;
+      this.status.textContent = `Shared playback needs matching track and beat grid on Deck ${snapshot.blockedDeckIds.join("/").toUpperCase()}`;
       return;
     }
     if (snapshot.role === "guest" && !snapshot.clockReady) {
@@ -309,6 +296,25 @@ export class CollaborativePlaybackAdapter {
       ? `Shared playback aligned · sequence ${snapshot.canonicalSequence}`
       : "Shared playback waiting for host state";
   }
+}
+
+function projectSharedPosition(state, elapsedMs) {
+  if (!Number.isFinite(elapsedMs) || elapsedMs < 0 || elapsedMs > 10_000) {
+    return null;
+  }
+  if (!state.playing) {
+    return state.positionSeconds;
+  }
+  const advanced = state.positionSeconds + (elapsedMs / 1000) * state.playbackRate;
+  if (!state.loop) {
+    return Math.min(advanced, state.durationSeconds);
+  }
+  const span = state.loop.endSeconds - state.loop.startSeconds;
+  if (!Number.isFinite(span) || span <= 0) {
+    return null;
+  }
+  const offset = ((advanced - state.loop.startSeconds) % span + span) % span;
+  return state.loop.startSeconds + offset;
 }
 
 function looksLikeAudio(file) {
