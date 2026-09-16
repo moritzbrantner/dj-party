@@ -66,6 +66,14 @@ integration = integration.replace(
   `{ trackContentId: TRACK, kind: "beat-jump", delta: 8, originPositionSeconds: 12 }`,
 );
 integration = integration.replace(
+  `  mixer.states.a.positionSeconds = 20;\n  mixer.emitPerformance("a", { kind: "beat-jump", delta: 4 });`,
+  `  mixer.states.a.positionSeconds = 20;\n  mixer.emitPerformance("a", { kind: "beat-jump", delta: 4, originPositionSeconds: 20 });`,
+);
+integration = integration.replace(
+  `  assert.deepEqual(coordinator.performance, [\n    { deckId: "a", action: { trackContentId: TRACK, kind: "beat-jump", delta: 4, originPositionSeconds: 12 } },\n  ]);`,
+  `  assert.deepEqual(coordinator.performance, [\n    { deckId: "a", action: { trackContentId: TRACK, kind: "beat-jump", delta: 4, originPositionSeconds: 20 } },\n  ]);`,
+);
+integration = integration.replace(
   `if (action.kind === "beat-jump") this.state.positionSeconds += action.delta;`,
   `if (action.kind === "beat-jump") this.state.positionSeconds = action.originPositionSeconds + action.delta;`,
 );
