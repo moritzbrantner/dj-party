@@ -234,13 +234,17 @@ export class CollaborativePlaybackAdapter {
     ) {
       return null;
     }
+    const loop = local.loopActive ? local.loop : null;
+    if (local.loopActive && !loop) {
+      return null;
+    }
     return {
       trackContentId,
       playing: Boolean(local.playing),
       positionSeconds: Math.min(Math.max(0, local.positionSeconds), local.durationSeconds),
       durationSeconds: local.durationSeconds,
       playbackRate: local.playbackRate,
-      loop: local.loop ?? null,
+      loop,
     };
   }
 
