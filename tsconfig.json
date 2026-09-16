@@ -9,6 +9,7 @@
     "strict": false,
     "allowJs": false,
     "checkJs": false,
+    "noCheck": true,
     "noEmitOnError": true,
     "skipLibCheck": true,
     "verbatimModuleSyntax": true,
