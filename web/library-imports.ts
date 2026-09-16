@@ -26,6 +26,10 @@ export function playlistIdForSource(name, sourceKey = name) {
 }
 
 class LibraryImports {
+  declare databasePromise: any;
+  declare library: any;
+  declare list: any;
+  declare playlists: any;
   constructor(library) {
     this.library = library;
     this.databasePromise = null;
@@ -70,7 +74,7 @@ class LibraryImports {
   }
 
   bindEvents() {
-    const input = document.querySelector("#library-package");
+    const input = document.querySelector<HTMLInputElement>("#library-package");
     input?.addEventListener("change", () => {
       const files = [...(input.files ?? [])];
       input.value = "";
@@ -194,7 +198,7 @@ class LibraryImports {
       return;
     }
 
-    const records = new Map(this.library.records.map((record) => [record.id, record]));
+    const records = new Map<string, any>(this.library.records.map((record) => [record.id, record]));
     for (const playlist of this.playlists) {
       const details = document.createElement("details");
       details.className = "library-playlist";
@@ -293,8 +297,8 @@ function stripExtension(name) {
   return String(name ?? "").replace(/\.[^.]+$/, "") || String(name ?? "");
 }
 
-function requestResult(request) {
-  return new Promise((resolve, reject) => {
+function requestResult<T>(request: IDBRequest<T>): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
     request.addEventListener("success", () => resolve(request.result), { once: true });
     request.addEventListener("error", () => reject(request.error ?? new Error("IndexedDB request failed")), {
       once: true,
@@ -302,8 +306,8 @@ function requestResult(request) {
   });
 }
 
-function transactionDone(transaction) {
-  return new Promise((resolve, reject) => {
+function transactionDone(transaction: IDBTransaction): Promise<void> {
+  return new Promise<void>((resolve, reject) => {
     transaction.addEventListener("complete", () => resolve(), { once: true });
     transaction.addEventListener("abort", () => reject(transaction.error ?? new Error("IndexedDB transaction aborted")), {
       once: true,

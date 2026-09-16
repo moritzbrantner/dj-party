@@ -1,4 +1,6 @@
 /target/
 /_site/
+/.web-build/
+/node_modules/
 /pkg/
 .DS_Store

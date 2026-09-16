@@ -9,6 +9,8 @@ DJ Party is a browser-first DJ application with a Rust core. The long-term direc
 - Rust is authoritative for deterministic mixer state and mix calculations.
 - Rust is authoritative for DJ Party's tempo/rate policy, effective-BPM and BPM-sync surface, beat/bar position, phase-sync planning, cue quantization, beat jumps, beat-loop policy, per-deck EQ/filter parameter semantics, and headphone-monitor gain semantics. Reusable pure audio calculations such as equal-power crossfade gains, tempo/rate conversion, tempo-only BPM-sync math, generic beat-loop selection, waveform extrema, generic filter coefficients, and DSP primitives belong to shared audio/math layers and must be consumed rather than duplicated here.
 - The browser adapter owns browser-only capabilities: local file/folder/ZIP/M3U selection, browser-local IndexedDB track/playlist/cache storage, bounded archive extraction, audio decoding, object URLs, Web Audio nodes, media-element playback, pitch-preservation/key-lock behavior, physical audio-output selection, DOM rendering, workers, and applying Rust-produced transport/gain/tone plans.
+- Browser application source is TypeScript under `web/`. Runtime `.js` modules are emitted into `.web-build/` and copied into the Pages artifact; generated browser JavaScript must not be committed as a second source of truth. Keep `.js` import specifiers in TypeScript when they name the emitted browser modules.
+- Semantic TypeScript checking stays enabled for browser source. Generated-Wasm bindings and browser APIs may use narrow boundary declarations, but do not disable checking globally or replace class shapes with open-ended index signatures merely to silence the compiler.
 - ZIP import is only an ingestion adapter. Extracted audio must go through the existing idempotent track importer; archive code must not create an independent track identity or deck-loading path.
 - ZIP extraction must remain fail-closed and bounded. Reject encrypted, multi-disk, ZIP64, malformed, oversized, unsupported-compression, truncated, and CRC-mismatched relevant entries rather than partially trusting them.
 - M3U/M3U8 import is local-reference metadata only. Never fetch remote playlist URLs; unmatched references stay unavailable. Playlist actions must call the existing saved-track deck loader.
@@ -18,9 +20,9 @@ DJ Party is a browser-first DJ application with a Rust core. The long-term direc
 - The browser may apply Rust-produced tone parameters to native Web Audio `BiquadFilterNode`s, but it must not duplicate DJ Party's knob mapping, gain ranges, sweep curve, or generic coefficient-design algorithms.
 - The browser-local music collection must reuse the existing deck file-selection/loading path when loading a saved track. Do not duplicate deck reset, analysis, transport, or mixer semantics inside the library adapter.
 - Local library import must be idempotent for the same file identity; re-importing the same track must not create duplicate collection rows.
-- Headphone cue branches are pre-fader. The monitor's Master contribution must follow the existing Rust-owned post-fader deck gains rather than duplicate crossfader or deck-level math in JavaScript.
+- Headphone cue branches are pre-fader. The monitor's Master contribution must follow the existing Rust-owned post-fader deck gains rather than duplicate crossfader or deck-level math in the browser adapter.
 - Audio-output routing must fail closed: when a separate permitted sink cannot be selected or disappears, stop that monitor route without changing the master playback route.
-- Do not duplicate Rust mixer, monitor, transport, or tone-policy formulas in JavaScript.
+- Do not duplicate Rust mixer, monitor, transport, or tone-policy formulas in the browser adapter.
 - Local library blobs, playlists, cached analysis, decoded PCM, cue definitions, hot-cue definitions, loop definitions, tone state, and monitor state stay local unless a later feature explicitly introduces user-approved transfer or sharing.
 - Beat-dependent controls must fail closed outside the verified beat-grid horizon; never silently snap to stale analyzed data.
 - `audio-analysis` remains authoritative for BPM, beat-grid, downbeat, Fourier, related reusable analysis semantics, and reusable policy-neutral audio/DJ calculations.
@@ -51,10 +53,10 @@ The browser app is acceptable when all of these hold:
 1. `cargo fmt --all --check`
 2. `cargo clippy --all-targets --all-features -- -D warnings`
 3. `cargo test --all-features`
-4. browser-module syntax validation passes for `web/app.js`, `web/mixer-app.js`, `web/multiplayer.js`, `web/shared-session.js`, `web/shared-session-transport.js`, `web/shared-playback.js`, `web/collaborative-mixer.js`, `web/collaborative-playback.js`, `web/track-identity.js`, `web/library.js`, `web/library-imports.js`, `web/archive-import.js`, `web/analysis-cache.js`, `web/analysis-worker.js`, `web/performance.js`, `web/output-routing.js`, and `web/effects.js`
-5. `node --test web/library.test.mjs web/archive-import.test.mjs web/analysis-cache.test.mjs web/multiplayer.test.mjs web/shared-session.test.mjs web/shared-session-transport.test.mjs web/collaborative-mixer.test.mjs web/track-identity.test.mjs web/shared-playback.test.mjs web/collaborative-playback.test.mjs` passes deterministic library/archive/cache/multiplayer/mixer/playback contracts
+4. `npm run typecheck` passes for the browser TypeScript source without disabling semantic checking or relying on generated JavaScript as source.
+5. `npm run test:web` compiles the TypeScript browser modules and passes deterministic library/archive/cache/multiplayer/mixer/playback contracts against the emitted `.js` graph.
 6. `bash scripts/build-pages.sh`
-7. the built Pages artifact contains the generated Rust/WASM package and all local browser modules/assets, including multiplayer setup, mixer authority, shared-playback authority, exact-track identity, track-library, archive/playlist import, analysis-cache, deck-effects, and headphone-monitor routing assets
+7. the built Pages artifact contains the generated Rust/WASM package and all emitted local browser modules/assets, including multiplayer setup, mixer authority, shared-playback authority, exact-track identity, track-library, archive/playlist import, analysis-cache, deck-effects, and headphone-monitor routing assets
 8. multi-file/folder/ZIP imports stay browser-local, duplicate audio imports still collapse through the canonical track importer, and saved/playlist tracks load through the existing deck file path
 9. ZIP relevant entries are bounded and CRC-verified, remote playlist references are not fetched, and unsupported archive features fail closed
 10. cached waveform/rhythm results are content-addressed/versioned and a cache miss, stale record, or cache failure falls back to normal worker analysis

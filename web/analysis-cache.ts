@@ -49,7 +49,7 @@ export async function writeCachedTrackAnalysis(record) {
   await transactionDone(write);
 
   const read = database.transaction(ANALYSIS_STORE, "readonly");
-  const all = await requestResult(read.objectStore(ANALYSIS_STORE).getAll());
+  const all = await requestResult<any[]>(read.objectStore(ANALYSIS_STORE).getAll());
   await transactionDone(read);
 
   if (all.length > MAX_CACHE_ENTRIES) {
@@ -196,8 +196,8 @@ async function openDatabase() {
   return databasePromise;
 }
 
-function requestResult(request) {
-  return new Promise((resolve, reject) => {
+function requestResult<T>(request: IDBRequest<T>): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
     request.addEventListener("success", () => resolve(request.result), { once: true });
     request.addEventListener("error", () => reject(request.error ?? new Error("IndexedDB request failed")), {
       once: true,
@@ -205,8 +205,8 @@ function requestResult(request) {
   });
 }
 
-function transactionDone(transaction) {
-  return new Promise((resolve, reject) => {
+function transactionDone(transaction: IDBTransaction): Promise<void> {
+  return new Promise<void>((resolve, reject) => {
     transaction.addEventListener("complete", () => resolve(), { once: true });
     transaction.addEventListener("abort", () => reject(transaction.error ?? new Error("IndexedDB transaction aborted")), {
       once: true,
@@ -232,7 +232,7 @@ function exactArrayBuffer(value) {
     return value;
   }
   if (ArrayBuffer.isView(value)) {
-    return value.buffer.slice(value.byteOffset, value.byteOffset + value.byteLength);
+    return new Uint8Array(value.buffer, value.byteOffset, value.byteLength).slice().buffer;
   }
   return null;
 }

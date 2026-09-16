@@ -3,14 +3,22 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 OUTPUT_DIR="${1:-$ROOT_DIR/_site}"
+WEB_BUILD_DIR="$ROOT_DIR/.web-build"
 
 if ! command -v wasm-pack >/dev/null 2>&1; then
   printf '%s\n' "wasm-pack is required to build the DJ Party Pages artifact." >&2
   exit 2
 fi
 
-rm -rf "$OUTPUT_DIR"
+if [[ ! -x "$ROOT_DIR/node_modules/.bin/tsc" ]]; then
+  printf '%s\n' "TypeScript dependencies are missing. Run npm install first." >&2
+  exit 2
+fi
+
+rm -rf "$OUTPUT_DIR" "$WEB_BUILD_DIR"
 mkdir -p "$OUTPUT_DIR/pkg"
+
+npm --prefix "$ROOT_DIR" run build:web
 
 wasm-pack build "$ROOT_DIR" \
   --target web \
@@ -20,23 +28,7 @@ wasm-pack build "$ROOT_DIR" \
   --out-name dj_party
 
 cp "$ROOT_DIR/web/index.html" "$OUTPUT_DIR/index.html"
-cp "$ROOT_DIR/web/app.js" "$OUTPUT_DIR/app.js"
-cp "$ROOT_DIR/web/mixer-app.js" "$OUTPUT_DIR/mixer-app.js"
-cp "$ROOT_DIR/web/multiplayer.js" "$OUTPUT_DIR/multiplayer.js"
-cp "$ROOT_DIR/web/shared-session.js" "$OUTPUT_DIR/shared-session.js"
-cp "$ROOT_DIR/web/shared-session-transport.js" "$OUTPUT_DIR/shared-session-transport.js"
-cp "$ROOT_DIR/web/shared-playback.js" "$OUTPUT_DIR/shared-playback.js"
-cp "$ROOT_DIR/web/collaborative-mixer.js" "$OUTPUT_DIR/collaborative-mixer.js"
-cp "$ROOT_DIR/web/collaborative-playback.js" "$OUTPUT_DIR/collaborative-playback.js"
-cp "$ROOT_DIR/web/track-identity.js" "$OUTPUT_DIR/track-identity.js"
-cp "$ROOT_DIR/web/library.js" "$OUTPUT_DIR/library.js"
-cp "$ROOT_DIR/web/library-imports.js" "$OUTPUT_DIR/library-imports.js"
-cp "$ROOT_DIR/web/archive-import.js" "$OUTPUT_DIR/archive-import.js"
-cp "$ROOT_DIR/web/analysis-cache.js" "$OUTPUT_DIR/analysis-cache.js"
-cp "$ROOT_DIR/web/analysis-worker.js" "$OUTPUT_DIR/analysis-worker.js"
-cp "$ROOT_DIR/web/performance.js" "$OUTPUT_DIR/performance.js"
-cp "$ROOT_DIR/web/output-routing.js" "$OUTPUT_DIR/output-routing.js"
-cp "$ROOT_DIR/web/effects.js" "$OUTPUT_DIR/effects.js"
+cp "$WEB_BUILD_DIR"/*.js "$OUTPUT_DIR/"
 cp "$ROOT_DIR/web/styles.css" "$OUTPUT_DIR/styles.css"
 cp "$ROOT_DIR/web/multiplayer.css" "$OUTPUT_DIR/multiplayer.css"
 cp "$ROOT_DIR/web/library.css" "$OUTPUT_DIR/library.css"

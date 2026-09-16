@@ -1,0 +1,30 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ES2022",
+    "moduleResolution": "Bundler",
+    "lib": [
+      "ES2022",
+      "DOM",
+      "DOM.Iterable",
+      "WebWorker"
+    ],
+    "rootDir": "web",
+    "outDir": ".web-build",
+    "strict": false,
+    "allowJs": false,
+    "checkJs": false,
+    "noEmitOnError": true,
+    "skipLibCheck": true,
+    "verbatimModuleSyntax": true,
+    "isolatedModules": true,
+    "forceConsistentCasingInFileNames": true
+  },
+  "include": [
+    "web/**/*.ts"
+  ],
+  "exclude": [
+    ".web-build",
+    "node_modules"
+  ]
+}
