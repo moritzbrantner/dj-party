@@ -86,7 +86,7 @@ Guests estimate the host clock with three bounded request/response samples and r
 
 Tempo remains part of the mixer authority. The playback protocol carries the source playback rate only as timing metadata for playhead projection; applying a remote playback command does not replace the locally converged mixer tempo. Track selection also stays local.
 
-Beat-loop lifecycle is part of shared playback protocol v2. Loop activation carries only the bounded beat count and start/end transport window; every receiving deck must independently reproduce that window through the local Rust-owned beat-loop planner before applying it. Loop exit is represented by a null loop. A mismatched local beat grid fails closed and requires reconciliation rather than accepting remote loop arithmetic. Cue definitions, hot-cue definitions, and content bytes remain local; their resulting one-off playhead movement can still converge through ordinary bounded playback state once the exact-track and clock requirements are satisfied.
+Beat-loop lifecycle is part of shared playback protocol v2. Loop activation carries only the bounded beat count and start/end transport window; every receiving deck must independently reproduce that window through the local Rust-owned beat-loop planner before applying it. Loop exit is represented by a null loop. A mismatched local beat grid fails closed and requires reconciliation rather than accepting remote loop arithmetic. Cue and hot-cue definitions remain local. Their one-off jumps cross the peer link only as normalized bounded seek intents carrying the exact track identity; no slot, label, or definition is shared. Beat jumps cross as bounded ±4/±8-beat intents with the initiating pre-jump playhead; the host re-plans from that bounded origin through the existing Rust-owned beat-jump policy before canonical playback is broadcast. Phase Sync may publish its resulting bounded seek while tempo remains part of mixer authority. Content bytes remain local.
 
 Reusable ownership remains explicit:
 
@@ -126,5 +126,5 @@ The generated static site is written to `_site/` and can be served by any local 
    - host-sequenced shared mixer controls and late-join reconciliation — implemented
    - exact-track identity + clock-aligned play/pause/seek reconciliation — implemented
    - shared loop lifecycle — implemented
-   - richer performance-transport semantics — next
-   - optional verified asset transfer and broader collaborative mixing — later
+   - richer performance-transport semantics — implemented
+   - optional verified asset transfer and broader collaborative mixing — next
