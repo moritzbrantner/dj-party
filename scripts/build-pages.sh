@@ -36,6 +36,7 @@ cp "$ROOT_DIR/web/library-imports.css" "$OUTPUT_DIR/library-imports.css"
 cp "$ROOT_DIR/web/analysis.css" "$OUTPUT_DIR/analysis.css"
 cp "$ROOT_DIR/web/monitoring.css" "$OUTPUT_DIR/monitoring.css"
 cp "$ROOT_DIR/web/effects.css" "$OUTPUT_DIR/effects.css"
+cp "$ROOT_DIR/web/settings.css" "$OUTPUT_DIR/settings.css"
 touch "$OUTPUT_DIR/.nojekyll"
 
 for required in \
@@ -57,6 +58,7 @@ for required in \
   "$OUTPUT_DIR/performance.js" \
   "$OUTPUT_DIR/output-routing.js" \
   "$OUTPUT_DIR/effects.js" \
+  "$OUTPUT_DIR/settings.js" \
   "$OUTPUT_DIR/styles.css" \
   "$OUTPUT_DIR/multiplayer.css" \
   "$OUTPUT_DIR/library.css" \
@@ -64,6 +66,7 @@ for required in \
   "$OUTPUT_DIR/analysis.css" \
   "$OUTPUT_DIR/monitoring.css" \
   "$OUTPUT_DIR/effects.css" \
+  "$OUTPUT_DIR/settings.css" \
   "$OUTPUT_DIR/pkg/dj_party.js" \
   "$OUTPUT_DIR/pkg/dj_party_bg.wasm"
 do
