@@ -217,9 +217,13 @@ export class SharedAssetTransferCoordinator extends EventTarget {
     const hostParticipantId = typeof network?.hostParticipantId === "string" ? network.hostParticipantId : null;
     const role = participantId && hostParticipantId ? (participantId === hostParticipantId ? "host" : "guest") : null;
     const active = Boolean(network?.state === "connected" && participantId && hostParticipantId);
-    const hostContentReady =
+    const hostCompatible =
       role === "guest" &&
       typeof hostParticipantId === "string" &&
+      Array.isArray(network?.compatiblePeerIds) &&
+      network.compatiblePeerIds.includes(hostParticipantId);
+    const hostContentReady =
+      hostCompatible &&
       Array.isArray(network?.contentPeerIds) &&
       network.contentPeerIds.includes(hostParticipantId);
 
