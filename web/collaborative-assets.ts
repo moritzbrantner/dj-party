@@ -31,7 +31,9 @@ export class CollaborativeAssetTransferAdapter {
   declare status: any;
   declare stopButton: any;
 
-  constructor({ library, coordinator = sharedAssetTransferSession } = {}) {
+  constructor(
+    { library, coordinator = sharedAssetTransferSession }: { library?: any; coordinator?: any } = {},
+  ) {
     this.library = library;
     this.coordinator = coordinator;
     this.deckFiles = new Map(DECK_IDS.map((deckId) => [deckId, null]));
@@ -127,8 +129,8 @@ export class CollaborativeAssetTransferAdapter {
   #bindDeckFiles() {
     const signal = this.abortController.signal;
     for (const deckId of DECK_IDS) {
-      const input = document.querySelector(`#deck-${deckId}-file`);
-      const dropZone = document.querySelector(`#deck-${deckId}-drop-zone`);
+      const input = document.querySelector<HTMLInputElement>(`#deck-${deckId}-file`);
+      const dropZone = document.querySelector<HTMLElement>(`#deck-${deckId}-drop-zone`);
 
       input?.addEventListener(
         "change",
