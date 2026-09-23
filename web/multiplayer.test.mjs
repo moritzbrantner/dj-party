@@ -5,6 +5,7 @@ import {
   DJ_PARTY_SESSION_PROTOCOL,
   MULTIPLAYER_CLIENT_MODULE_URL,
   MULTIPLAYER_CLIENT_SOURCE_COMMIT,
+  MULTIPLAYER_GAME_FILES_MODULE_URL,
   MULTIPLAYER_TURN_MODULE_URL,
   DjPartyMultiplayerSession,
   isDjPartySessionHello,
@@ -29,6 +30,8 @@ test("multiplayer browser helpers are pinned to one exact service commit", () =>
   assert.ok(MULTIPLAYER_CLIENT_MODULE_URL.includes(`@${MULTIPLAYER_CLIENT_SOURCE_COMMIT}/`));
   assert.ok(MULTIPLAYER_TURN_MODULE_URL.includes(`@${MULTIPLAYER_CLIENT_SOURCE_COMMIT}/`));
   assert.ok(MULTIPLAYER_CLIENT_MODULE_URL.endsWith("/web/lobby-session.js"));
+  assert.ok(MULTIPLAYER_GAME_FILES_MODULE_URL.endsWith("/web/game-files.js"));
+  assert.ok(MULTIPLAYER_GAME_FILES_MODULE_URL.includes(`@${MULTIPLAYER_CLIENT_SOURCE_COMMIT}/`));
   assert.ok(MULTIPLAYER_TURN_MODULE_URL.endsWith("/web/turn-credentials.js"));
 });
 
@@ -40,12 +43,20 @@ test("optional TURN module loading cannot block the required lobby client", asyn
     if (url === MULTIPLAYER_CLIENT_MODULE_URL) {
       return { LobbySession: RequiredLobbySession };
     }
+    if (url === MULTIPLAYER_GAME_FILES_MODULE_URL) {
+      return { GameFiles: FakeGameFiles };
+    }
     throw new Error("optional TURN module unavailable");
   });
 
   assert.equal(client.LobbySession, RequiredLobbySession);
+  assert.equal(client.GameFiles, FakeGameFiles);
   assert.equal(client.refreshTurnIceServers, null);
-  assert.deepEqual(imported, [MULTIPLAYER_CLIENT_MODULE_URL, MULTIPLAYER_TURN_MODULE_URL]);
+  assert.deepEqual(imported, [
+    MULTIPLAYER_CLIENT_MODULE_URL,
+    MULTIPLAYER_GAME_FILES_MODULE_URL,
+    MULTIPLAYER_TURN_MODULE_URL,
+  ]);
 
   const controller = new DjPartyMultiplayerSession({
     apiBase: "https://multi.example.com",
@@ -131,6 +142,7 @@ test("session adapter delegates setup and TURN fallback to reusable service help
           created = this;
         }
       },
+      GameFiles: FakeGameFiles,
       refreshTurnIceServers: async (session) => {
         turnSession = session;
         return { iceServers: [{ urls: ["turns:turn.example.com"] }], expiresAt: Date.now() + 60_000 };
@@ -144,8 +156,10 @@ test("session adapter delegates setup and TURN fallback to reusable service help
   assert.deepEqual(created.options, {
     apiBase: "https://multi.example.com",
     topology: "mesh",
-    contentSharing: false,
+    contentSharing: true,
   });
+  assert.equal(controller.snapshot().contentTransferAvailable, true);
+  assert.deepEqual(controller.snapshot().contentPeerIds, []);
   assert.equal(turnSession, created);
   assert.equal(controller.snapshot().state, "connected");
   assert.equal(controller.snapshot().turnAvailable, true);
@@ -178,6 +192,33 @@ test("session adapter delegates setup and TURN fallback to reusable service help
   controller.close();
   assert.equal(created.closed, true);
   assert.equal(controller.snapshot().state, "closed");
+});
+
+test("verified file helpers are created only for an established content-sharing session", async () => {
+  let constructed = null;
+  const controller = new DjPartyMultiplayerSession({
+    apiBase: "https://multi.example.com",
+    loadClient: async () => ({
+      LobbySession: FakeLobbySession,
+      GameFiles: class extends FakeGameFiles {
+        constructor(options) {
+          super(options);
+          constructed = options;
+        }
+      },
+    }),
+  });
+
+  assert.throws(() => controller.createGameFiles({ files: [] }), /unavailable/);
+  await controller.host(2);
+  const manifest = { protocol: "test", files: [] };
+  const files = controller.createGameFiles(manifest);
+  assert.ok(files instanceof FakeGameFiles);
+  assert.equal(constructed.session, controller.session);
+  assert.equal(constructed.manifest, manifest);
+
+  controller.close();
+  assert.throws(() => controller.createGameFiles(manifest), /unavailable/);
 });
 
 test("TURN credential failure keeps an established direct session usable", async () => {
@@ -224,6 +265,12 @@ test("closing during client loading cancels setup before a service session is cr
   assert.equal(constructed, 0);
   assert.equal(controller.snapshot().state, "closed");
 });
+
+class FakeGameFiles {
+  constructor(options) {
+    this.options = options;
+  }
+}
 
 class FakeLobbySession extends EventTarget {
   constructor(options) {
