@@ -31,6 +31,7 @@ cp "$ROOT_DIR/web/index.html" "$OUTPUT_DIR/index.html"
 cp "$WEB_BUILD_DIR"/*.js "$OUTPUT_DIR/"
 cp "$ROOT_DIR/web/styles.css" "$OUTPUT_DIR/styles.css"
 cp "$ROOT_DIR/web/multiplayer.css" "$OUTPUT_DIR/multiplayer.css"
+cp "$ROOT_DIR/web/shared-assets.css" "$OUTPUT_DIR/shared-assets.css"
 cp "$ROOT_DIR/web/library.css" "$OUTPUT_DIR/library.css"
 cp "$ROOT_DIR/web/library-imports.css" "$OUTPUT_DIR/library-imports.css"
 cp "$ROOT_DIR/web/analysis.css" "$OUTPUT_DIR/analysis.css"
@@ -47,6 +48,8 @@ for required in \
   "$OUTPUT_DIR/shared-session.js" \
   "$OUTPUT_DIR/shared-session-transport.js" \
   "$OUTPUT_DIR/shared-playback.js" \
+  "$OUTPUT_DIR/shared-assets.js" \
+  "$OUTPUT_DIR/collaborative-assets.js" \
   "$OUTPUT_DIR/collaborative-mixer.js" \
   "$OUTPUT_DIR/collaborative-playback.js" \
   "$OUTPUT_DIR/track-identity.js" \
@@ -61,6 +64,7 @@ for required in \
   "$OUTPUT_DIR/settings.js" \
   "$OUTPUT_DIR/styles.css" \
   "$OUTPUT_DIR/multiplayer.css" \
+  "$OUTPUT_DIR/shared-assets.css" \
   "$OUTPUT_DIR/library.css" \
   "$OUTPUT_DIR/library-imports.css" \
   "$OUTPUT_DIR/analysis.css" \

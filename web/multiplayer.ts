@@ -1,6 +1,7 @@
 export const MULTIPLAYER_CLIENT_SOURCE_COMMIT = "556f1aa2ac889acffd5b2b27163fca10f1901793";
 const MULTIPLAYER_CLIENT_BASE_URL = `https://cdn.jsdelivr.net/gh/moritzbrantner/multiplayer-setup-service@${MULTIPLAYER_CLIENT_SOURCE_COMMIT}/web`;
 export const MULTIPLAYER_CLIENT_MODULE_URL = `${MULTIPLAYER_CLIENT_BASE_URL}/lobby-session.js`;
+export const MULTIPLAYER_GAME_FILES_MODULE_URL = `${MULTIPLAYER_CLIENT_BASE_URL}/game-files.js`;
 export const MULTIPLAYER_TURN_MODULE_URL = `${MULTIPLAYER_CLIENT_BASE_URL}/turn-credentials.js`;
 export const DJ_PARTY_SESSION_PROTOCOL = 1;
 
@@ -9,6 +10,16 @@ const HELLO_TYPE = "dj-party/session-hello";
 
 export async function loadMultiplayerClientModules(importModule = (url) => import(url)) {
   const sessionModule = await importModule(MULTIPLAYER_CLIENT_MODULE_URL);
+  let GameFiles = null;
+  try {
+    const gameFilesModule = await importModule(MULTIPLAYER_GAME_FILES_MODULE_URL);
+    if (typeof gameFilesModule?.GameFiles === "function") {
+      GameFiles = gameFilesModule.GameFiles;
+    }
+  } catch {
+    // Verified content transfer is optional. Mixer/playback sessions remain usable without it.
+  }
+
   let refreshTurnIceServers = null;
   try {
     const turnModule = await importModule(MULTIPLAYER_TURN_MODULE_URL);
@@ -20,6 +31,7 @@ export async function loadMultiplayerClientModules(importModule = (url) => impor
   }
   return {
     LobbySession: sessionModule?.LobbySession,
+    GameFiles,
     refreshTurnIceServers,
   };
 }
@@ -113,6 +125,7 @@ export class DjPartyMultiplayerSession extends EventTarget {
   declare abortController: any;
   declare compatiblePeers: any;
   declare apiBase: any;
+  declare gameFilesClass: any;
   declare loadClient: any;
   declare session: any;
   declare state: any;
@@ -128,6 +141,7 @@ export class DjPartyMultiplayerSession extends EventTarget {
     });
     this.loadClient = loadClient;
     this.session = null;
+    this.gameFilesClass = null;
     this.compatiblePeers = new Set();
     this.abortController = null;
     this.state = "idle";
@@ -159,8 +173,22 @@ export class DjPartyMultiplayerSession extends EventTarget {
       participantCount: session?.participants instanceof Set ? session.participants.size : 0,
       readyPeerIds: typeof session?.readyPeerIds === "function" ? session.readyPeerIds() : [],
       compatiblePeerIds: [...this.compatiblePeers].sort(),
+      contentPeerIds: typeof session?.contentPeerIds === "function" ? session.contentPeerIds() : [],
+      contentTransferAvailable: Boolean(session?.contentSharing === true && this.gameFilesClass),
       turnAvailable: this.turnAvailable,
     };
+  }
+
+  createGameFiles(manifest) {
+    if (
+      this.state !== "connected" ||
+      !this.session ||
+      this.session.contentSharing !== true ||
+      typeof this.gameFilesClass !== "function"
+    ) {
+      throw new Error("Verified multiplayer track transfer is unavailable");
+    }
+    return new this.gameFilesClass({ session: this.session, manifest });
   }
 
   close() {
@@ -169,6 +197,7 @@ export class DjPartyMultiplayerSession extends EventTarget {
     this.abortController?.abort();
     this.abortController = null;
     this.session = null;
+    this.gameFilesClass = null;
     this.compatiblePeers.clear();
     this.turnAvailable = null;
     this.state = "closed";
@@ -197,10 +226,11 @@ export class DjPartyMultiplayerSession extends EventTarget {
         throw new Error("The multiplayer setup browser client is incompatible");
       }
 
+      this.gameFilesClass = typeof module?.GameFiles === "function" ? module.GameFiles : null;
       session = new module.LobbySession({
         apiBase: this.apiBase,
         topology: "mesh",
-        contentSharing: false,
+        contentSharing: Boolean(this.gameFilesClass),
       });
       this.session = session;
       this.#wireSession(session);
@@ -222,6 +252,7 @@ export class DjPartyMultiplayerSession extends EventTarget {
       }
       session?.close();
       this.compatiblePeers.clear();
+      this.gameFilesClass = null;
       this.turnAvailable = null;
       if (!cancelled) {
         this.state = "idle";
@@ -268,7 +299,7 @@ export class DjPartyMultiplayerSession extends EventTarget {
     const signal = this.abortController.signal;
     const refresh = () => this.#emit("change", this.snapshot());
 
-    for (const type of ["lobby", "participant-connected", "statechange"]) {
+    for (const type of ["lobby", "participant-connected", "statechange", "content-peer-ready", "channel-close"]) {
       session.addEventListener(type, refresh, { signal });
     }
 
@@ -442,7 +473,7 @@ class MultiplayerSessionUi extends EventTarget {
           </div>
           <output id="multiplayer-peer-status" class="multiplayer-peer-status" aria-live="polite">No peer links</output>
         </div>
-        <p class="multiplayer-note">The setup service handles lobby admission and WebRTC signaling only. DJ Party audio, tracks, mixer state, and content bytes are not sent in this slice.</p>
+        <p class="multiplayer-note">The setup service handles lobby admission and WebRTC signaling. Track transfer, when explicitly approved, stays peer to peer on the reusable verified content channel.</p>
       </section>`,
     );
 

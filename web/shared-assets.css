@@ -1,0 +1,63 @@
+.shared-track-transfer {
+  display: grid;
+  gap: 0.75rem;
+  padding: 0.9rem 1rem;
+  border: 1px solid var(--line);
+  border-radius: 0.9rem;
+  background: color-mix(in srgb, var(--panel) 92%, transparent);
+}
+
+.shared-track-heading,
+.shared-track-controls {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  flex-wrap: wrap;
+}
+
+.shared-track-heading {
+  justify-content: space-between;
+}
+
+.shared-track-heading > div {
+  display: grid;
+  gap: 0.15rem;
+}
+
+.shared-track-kicker,
+.shared-track-label {
+  color: var(--muted);
+  font-size: 0.72rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.shared-track-status,
+.shared-track-offer {
+  color: var(--muted);
+  font-size: 0.82rem;
+}
+
+.shared-track-offer {
+  flex: 1 1 18rem;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.shared-track-note {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.78rem;
+  line-height: 1.45;
+}
+
+@media (max-width: 720px) {
+  .shared-track-heading {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .shared-track-controls > button {
+    flex: 1 1 auto;
+  }
+}
