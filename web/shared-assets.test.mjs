@@ -151,6 +151,30 @@ test("guests accept offers only from the verified host and request bytes only af
   coordinator.detachTransport();
 });
 
+test("guest readiness drops immediately when DJ Party peer verification is lost", async () => {
+  const bytes = new TextEncoder().encode("hello world");
+  const prepared = await buildTrackAssetOffer(fakeFile(bytes), "a");
+  const transport = new FakeTransport({
+    participantId: "GUEST",
+    hostParticipantId: "HOST",
+    compatiblePeerIds: ["HOST"],
+    contentPeerIds: ["HOST"],
+  });
+  transport.requestBytes = bytes;
+  const coordinator = new SharedAssetTransferCoordinator();
+  coordinator.attachTransport(transport);
+
+  transport.emitApplication("HOST", offerMessage(prepared, 1));
+  assert.equal(coordinator.snapshot().contentReady, true);
+
+  transport.current.compatiblePeerIds = [];
+  transport.dispatchEvent(new CustomEvent("change", { detail: transport.snapshot() }));
+
+  assert.equal(coordinator.snapshot().contentReady, false);
+  await assert.rejects(coordinator.requestOfferedTrack(), /not a verified DJ Party peer/);
+  coordinator.detachTransport();
+});
+
 test("stale clears cannot remove a newer host offer", async () => {
   const bytes = new TextEncoder().encode("hello world");
   const prepared = await buildTrackAssetOffer(fakeFile(bytes), "a");
