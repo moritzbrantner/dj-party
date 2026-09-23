@@ -136,7 +136,7 @@ export class CollaborativeAssetTransferAdapter {
         "change",
         () => {
           const [file] = input.files ?? [];
-          this.#setDeckFile(deckId, file);
+          this.setDeckFile(deckId, file);
         },
         { signal, capture: true },
       );
@@ -145,13 +145,13 @@ export class CollaborativeAssetTransferAdapter {
         "drop",
         (event) => {
           const [file] = event.dataTransfer?.files ?? [];
-          this.#setDeckFile(deckId, file);
+          this.setDeckFile(deckId, file);
         },
         { signal, capture: true },
       );
 
       const [initial] = input?.files ?? [];
-      this.#setDeckFile(deckId, initial, { render: false });
+      this.setDeckFile(deckId, initial, { initial: true, render: false });
     }
   }
 
@@ -174,8 +174,22 @@ export class CollaborativeAssetTransferAdapter {
     this.receiveButton?.addEventListener("click", () => void this.#receiveTrack(), { signal });
   }
 
-  #setDeckFile(deckId, file, { render = true } = {}) {
-    this.deckFiles.set(deckId, isSupportedAudioFile(file) ? file : null);
+  setDeckFile(deckId, file, { initial = false, render = true } = {}) {
+    const previous = this.deckFiles.get(deckId) ?? null;
+    const next = isSupportedAudioFile(file) ? file : null;
+    this.deckFiles.set(deckId, next);
+
+    if (!initial && previous !== next) {
+      const snapshot = this.coordinator.snapshot();
+      if (snapshot?.active && snapshot.role === "host" && snapshot.offer?.deckId === deckId) {
+        try {
+          this.coordinator.stopOffering();
+        } catch {
+          // A concurrent session transition already revoked the old offer.
+        }
+      }
+    }
+
     if (render) {
       this.#render(this.coordinator.snapshot());
     }
