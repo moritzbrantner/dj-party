@@ -276,6 +276,8 @@ class FakeLobbySession extends EventTarget {
   constructor(options) {
     super();
     this.options = options;
+    this.contentSharing = options.contentSharing === true;
+    this.contentReady = new Set();
     this.lobbyId = null;
     this.displayCode = null;
     this.participantId = null;
@@ -299,6 +301,10 @@ class FakeLobbySession extends EventTarget {
 
   readyPeerIds() {
     return [...this.ready].sort();
+  }
+
+  contentPeerIds() {
+    return [...this.contentReady].sort();
   }
 
   sendReliable(peerId, data) {
