@@ -97,6 +97,8 @@ jobs:
           shared_session = (root / "shared-session.js").read_text()
           shared_transport = (root / "shared-session-transport.js").read_text()
           shared_playback = (root / "shared-playback.js").read_text()
+          shared_assets = (root / "shared-assets.js").read_text()
+          collaborative_assets = (root / "collaborative-assets.js").read_text()
           collaborative = (root / "collaborative-mixer.js").read_text()
           collaborative_playback = (root / "collaborative-playback.js").read_text()
           track_identity = (root / "track-identity.js").read_text()
@@ -115,6 +117,7 @@ jobs:
           assert './library-imports.css' in app, "browser bootstrap does not install archive/playlist styles"
           assert './multiplayer.js' in app and 'installMultiplayerSessions' in app, "browser bootstrap does not install multiplayer setup"
           assert './shared-session-transport.js' in app and 'installSharedSessionTransport' in app, "browser bootstrap does not attach verified peers to shared authority"
+          assert './collaborative-assets.js' in app and 'installCollaborativeAssetTransfer' in app, "browser bootstrap does not install verified asset transfer"
           assert './collaborative-mixer.js' in app and 'installCollaborativeMixer' in app, "browser bootstrap does not install collaborative mixer bindings"
           assert './collaborative-playback.js' in app and 'installCollaborativePlayback' in app, "browser bootstrap does not install collaborative playback bindings"
           assert './mixer-app.js' in app, "browser bootstrap does not start the mixer adapter"
@@ -122,8 +125,8 @@ jobs:
           assert '556f1aa2ac889acffd5b2b27163fca10f1901793' in multiplayer, "multiplayer client is not pinned to the reviewed service commit"
           assert 'cdn.jsdelivr.net/gh/moritzbrantner/multiplayer-setup-service@' in multiplayer, "multiplayer client does not consume the reusable service module"
           assert 'topology: "mesh"' in multiplayer, "DJ Party multiplayer does not use the selected mesh topology"
-          assert 'contentSharing: false' in multiplayer, "optional content sharing must remain disabled"
-          assert 'sendContent(' not in multiplayer, "DJ Party must not send content bytes in this slice"
+          assert 'game-files.js' in multiplayer and 'contentSharing: Boolean(this.gameFilesClass)' in multiplayer, "verified content sharing does not use the pinned reusable GameFiles path"
+          assert 'sendContent(' not in multiplayer, "DJ Party must not reimplement service content transport"
           assert 'participantToken' not in multiplayer, "DJ Party adapter must not copy capability tokens into app state or URLs"
           assert 'DJ_PARTY_SESSION_PROTOCOL' in multiplayer and 'dj-party/session-hello' in multiplayer, "DJ Party peer compatibility handshake is missing"
 
@@ -136,6 +139,12 @@ jobs:
           assert 'sendApplicationReliable' in shared_transport and 'broadcastApplicationReliable' in shared_transport, "shared transport does not use verified reliable peer links"
           assert 'compatiblePeers' in shared_transport, "shared transport does not bind to verified DJ Party peers"
           assert 'sharedPlaybackSession.attachTransport' in shared_transport, "verified transport is not shared with playback authority"
+          assert 'sharedAssetTransferSession.attachTransport' in shared_transport, "verified transport is not shared with asset-transfer authority"
+          assert 'dj-party/track-asset-offer' in shared_assets and 'dj-party/track-asset-clear' in shared_assets, "shared asset offer lifecycle is missing"
+          assert 'trackContentIdForBytes' in shared_assets and 'createGameFiles' in shared_assets, "asset transfer is not bound to exact content identity and reusable verified transfer"
+          assert 'sendContent(' not in shared_assets, "DJ Party asset authority must not duplicate the reusable content channel"
+          assert 'requestOfferedTrack' in shared_assets and 'offerTrack' in shared_assets, "explicit sender/receiver transfer actions are missing"
+          assert 'library.importFiles' in collaborative_assets, "verified received tracks do not reuse the local library importer"
           for control in ['crossfader', 'deck-level', 'tempo', 'key-lock', 'tone']:
               assert control in shared_session, f"shared mixer protocol is missing {control}"
           assert 'monitor-' not in collaborative and 'headphone' not in collaborative.lower(), "hardware-local monitoring leaked into shared mixer state"
@@ -178,6 +187,7 @@ jobs:
 
           for asset in [
               "multiplayer.js", "multiplayer.css", "shared-session.js", "shared-session-transport.js", "shared-playback.js",
+              "shared-assets.js", "shared-assets.css", "collaborative-assets.js",
               "collaborative-mixer.js", "collaborative-playback.js", "track-identity.js",
               "library.css", "library.js", "library-imports.js", "library-imports.css",
               "archive-import.js", "analysis-cache.js", "mixer-app.js", "monitoring.css",
