@@ -242,8 +242,10 @@ export class SharedAssetTransferCoordinator extends EventTarget {
   }
 
   async offerTrack(file, deckId) {
-    this.#requireHost();
-    const networkBefore = this.transport.snapshot();
+    const networkBefore = this.#requireHost();
+    const initiatingTransport = this.transport;
+    const initiatingParticipantId = networkBefore.participantId;
+    const initiatingHostParticipantId = networkBefore.hostParticipantId;
     if (networkBefore.contentTransferAvailable !== true) {
       throw new Error("Verified track transfer is unavailable in this multiplayer client");
     }
@@ -255,10 +257,21 @@ export class SharedAssetTransferCoordinator extends EventTarget {
 
     try {
       const prepared = await buildTrackAssetOffer(file, deckId);
-      this.#requireHost();
+      if (this.transport !== initiatingTransport) {
+        throw new Error("Multiplayer session changed while preparing the shared track");
+      }
+      const networkAfter = initiatingTransport.snapshot();
+      if (
+        networkAfter?.state !== "connected" ||
+        networkAfter?.participantId !== initiatingParticipantId ||
+        networkAfter?.hostParticipantId !== initiatingHostParticipantId ||
+        initiatingParticipantId !== initiatingHostParticipantId
+      ) {
+        throw new Error("Multiplayer session changed while preparing the shared track");
+      }
 
       this.#closeGameFiles();
-      const gameFiles = this.transport.createGameFiles(prepared.manifest);
+      const gameFiles = initiatingTransport.createGameFiles(prepared.manifest);
       const revision = this.localRevision + 1;
       this.localRevision = revision;
       this.localOffer = { ...prepared, revision };
@@ -269,13 +282,14 @@ export class SharedAssetTransferCoordinator extends EventTarget {
         const current = this.transport?.snapshot?.();
         const stillOffered =
           this.localOffer?.revision === revision &&
+          this.transport === initiatingTransport &&
           this.localOffer?.sha256 === prepared.sha256 &&
           current?.state === "connected" &&
           current?.participantId === current?.hostParticipantId;
         return stillOffered && current?.compatiblePeerIds?.includes(peerId) ? file : null;
       });
 
-      this.transport.broadcastApplicationReliable(networkOffer(this.localOffer));
+      initiatingTransport.broadcastApplicationReliable(networkOffer(this.localOffer));
       return publicOffer(this.localOffer);
     } catch (error) {
       this.lastError = errorMessage(error);
