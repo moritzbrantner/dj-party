@@ -59,6 +59,17 @@ test("bridge exposes compatible peers and delegates reliable sends", () => {
   assert.deepEqual(compatible, ["A", "B"]);
 });
 
+test("bridge delegates verified file helpers without exposing the service session", () => {
+  const controller = new FakeController();
+  const bridge = new MultiplayerSharedTransport(controller);
+  const manifest = { protocol: "test" };
+
+  const files = bridge.createGameFiles(manifest);
+
+  assert.deepEqual(files, { manifest });
+  assert.deepEqual(controller.createdManifests, [manifest]);
+});
+
 test("one vanished peer does not abort a broadcast to remaining compatible peers", () => {
   const controller = new FakeController();
   controller.compatiblePeers.add("A");
@@ -78,6 +89,7 @@ class FakeController extends EventTarget {
     super();
     this.compatiblePeers = new Set();
     this.session = new FakeSession();
+    this.createdManifests = [];
     this.state = {
       state: "connected",
       participantId: "HOST",
@@ -91,6 +103,11 @@ class FakeController extends EventTarget {
       ...this.state,
       compatiblePeerIds: [...this.compatiblePeers].sort(),
     };
+  }
+
+  createGameFiles(manifest) {
+    this.createdManifests.push(manifest);
+    return { manifest };
   }
 }
 

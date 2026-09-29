@@ -348,14 +348,14 @@ class BrowserTrackLibrary {
       if (!silent && values.length > 0) {
         this.setStatus("No supported audio files were selected");
       }
-      return;
+      return null;
     }
 
     if (!(await this.ready)) {
       if (!silent) {
         this.setStatus("Persistent library is unavailable in this browser");
       }
-      return;
+      return null;
     }
 
     if (!silent) {
@@ -378,11 +378,13 @@ class BrowserTrackLibrary {
           this.setStatus(`Added ${result.added.length} ${result.added.length === 1 ? "track" : "tracks"}`);
         }
       }
+      return result;
     } catch (error) {
       console.error("Could not save tracks in browser-local library", error);
       if (!silent) {
         this.setStatus(describeStorageError(error));
       }
+      return null;
     }
   }
 

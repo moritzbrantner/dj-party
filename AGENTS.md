@@ -23,13 +23,13 @@ DJ Party is a browser-first DJ application with a Rust core. The long-term direc
 - Headphone cue branches are pre-fader. The monitor's Master contribution must follow the existing Rust-owned post-fader deck gains rather than duplicate crossfader or deck-level math in the browser adapter.
 - Audio-output routing must fail closed: when a separate permitted sink cannot be selected or disappears, stop that monitor route without changing the master playback route.
 - Do not duplicate Rust mixer, monitor, transport, or tone-policy formulas in the browser adapter.
-- Local library blobs, playlists, cached analysis, decoded PCM, cue definitions, hot-cue definitions, loop definitions, tone state, and monitor state stay local unless a later feature explicitly introduces user-approved transfer or sharing.
+- Local library blobs, playlists, cached analysis, decoded PCM, cue definitions, hot-cue definitions, loop definitions, tone state, and monitor state stay local by default. The only track-byte exception is the explicit verified transfer path below, and received bytes must return to the existing browser-local library rather than creating a second store.
 - Beat-dependent controls must fail closed outside the verified beat-grid horizon; never silently snap to stale analyzed data.
 - `audio-analysis` remains authoritative for BPM, beat-grid, downbeat, Fourier, related reusable analysis semantics, and reusable policy-neutral audio/DJ calculations.
 - Multiplayer session setup must use the reusable `LobbySession` client from `multiplayer-setup-service`; do not reimplement lobby HTTP, participant capability-token handling, signaling WebSockets, reconnect policy, ICE exchange, TURN credential handling, or WebRTC link establishment in DJ Party.
 - The reusable multiplayer browser client must be pinned to an exact reviewed source commit. Do not switch DJ Party to an unpinned `main`/latest module URL.
-- DJ Party's setup adapter uses `mesh` topology and keeps optional content sharing disabled until a later slice explicitly adds user-approved transfer with content verification.
-- The setup service is rendezvous/control plane only. Mixer authority, DJ Party commands, audio state, tracks, chat, and content bytes must not move into the service.
+- DJ Party's setup adapter uses `mesh` topology. The reusable content channel may be enabled only when the exact-pinned `GameFiles` helper loads; DJ Party must not reimplement or directly call the low-level content sender.
+- The setup service is rendezvous/control plane only. Mixer authority, DJ Party commands, audio state, tracks, chat, and content bytes must not move into the service backend. Explicit track bytes may cross only the service-created peer content channel.
 - Public invite state may contain only the setup-service API base and public lobby code. Participant capability tokens must remain inside the reusable service client and must never be copied into DJ Party state, storage, logs, or URLs.
 - Shared application messages may flow only through already verified DJ Party reliable peer links. Ignore application messages from unverified peers and ignore unknown protocol versions/types.
 - DJ Party shared-session authority is host-sequenced application state, not signaling-service or server audio authority. The current lobby host assigns monotonic canonical sequence numbers; guests submit monotonic per-peer requests; the host rejects stale/duplicate guest requests before rebroadcasting canonical state.
@@ -44,7 +44,9 @@ DJ Party is a browser-first DJ application with a Rust core. The long-term direc
 - Shared playback protocol v2 may carry a bounded 1/2/4/8-beat loop lifecycle together with exact-track transport state. The receiver must re-derive the requested loop through the local Rust-owned beat-loop planner and fail closed if the local analyzed beat window does not match the transmitted start/end bounds. Networking code must not invent or duplicate beat-loop arithmetic.
 - Cue and hot-cue definitions remain local. Shared performance transport may carry only their normalized bounded target seek plus exact track identity; never share slot mappings, labels, or cue banks. Beat jumps must cross as bounded ±4/±8-beat semantic intents with the initiating pre-jump playhead, and the host must re-run them from that bounded origin through the existing Rust-owned beat-jump planner before broadcasting canonical playback. Phase Sync may share its resulting bounded seek while tempo remains mixer authority.
 - Physical headphone/master output routing and monitor cue/mix/level always remain local hardware policy and never enter mixer or playback snapshots.
-- Content sharing remains disabled; optional asset transfer must be explicitly user-approved and content-verified in a later phase.
+- Track transfer is a separate protocol from mixer/playback state. The host must explicitly choose one currently loaded Deck A/B file to offer, and the guest must explicitly request/save that offer; neither side may auto-transfer based on playback state.
+- Every offered track must use the reusable `GameFiles`/content-transfer path with a one-file trusted manifest, per-chunk hashes, and a full SHA-256 matching the exact encoded-byte playback identity. DJ Party must not duplicate chunk framing, flow control, or content verification.
+- A host file provider must fail closed for peers that have not completed the DJ Party compatibility handshake. A received verified track may be saved through the existing local-library importer but must not be auto-loaded into a deck.
 
 ## Browser acceptance
 
@@ -54,17 +56,17 @@ The browser app is acceptable when all of these hold:
 2. `cargo clippy --all-targets --all-features -- -D warnings`
 3. `cargo test --all-features`
 4. `npm run typecheck` passes for the browser TypeScript source without disabling semantic checking or relying on generated JavaScript as source.
-5. `npm run test:web` compiles the TypeScript browser modules and passes deterministic library/archive/cache/multiplayer/mixer/playback contracts against the emitted `.js` graph.
+5. `npm run test:web` compiles the TypeScript browser modules and passes deterministic library/archive/cache/multiplayer/mixer/playback/asset-transfer contracts against the emitted `.js` graph.
 6. `bash scripts/build-pages.sh`
-7. the built Pages artifact contains the generated Rust/WASM package and all emitted local browser modules/assets, including multiplayer setup, mixer authority, shared-playback authority, exact-track identity, track-library, archive/playlist import, analysis-cache, deck-effects, and headphone-monitor routing assets
+7. the built Pages artifact contains the generated Rust/WASM package and all emitted local browser modules/assets, including multiplayer setup, mixer authority, shared-playback authority, verified asset-transfer authority/UI, exact-track identity, track-library, archive/playlist import, analysis-cache, deck-effects, and headphone-monitor routing assets
 8. multi-file/folder/ZIP imports stay browser-local, duplicate audio imports still collapse through the canonical track importer, and saved/playlist tracks load through the existing deck file path
 9. ZIP relevant entries are bounded and CRC-verified, remote playlist references are not fetched, and unsupported archive features fail closed
 10. cached waveform/rhythm results are content-addressed/versioned and a cache miss, stale record, or cache failure falls back to normal worker analysis
-11. multiplayer setup consumes an exact-commit reusable service client, uses mesh topology, keeps content sharing disabled, and never exposes participant capability tokens in DJ Party state/URLs
-12. only verified DJ Party peers can enter either shared application protocol; unverified reliable messages remain outside mixer and playback state
+11. multiplayer setup consumes an exact-commit reusable service client, uses mesh topology, enables content sharing only through the pinned reusable `GameFiles` capability, and never exposes participant capability tokens in DJ Party state/URLs
+12. only verified DJ Party peers can enter DJ Party shared application protocols; unverified reliable messages remain outside mixer/playback/asset-offer state and host asset providers return no bytes for unverified peers
 13. mixer authority covers host canonical sequencing, per-peer request replay protection, snapshot reconciliation, stale/non-host rejection, and feedback-free reuse of existing mixer/effects handlers
 14. playback authority covers exact SHA-256 track identity, host sequencing, per-peer replay protection across state and performance requests, bounded three-sample clock alignment, contiguous canonical commands, late-join/gap snapshots, mismatched-track failure, shared loop activation/exit validated against the local Rust beat-loop plan, host-replayed beat jumps, and bounded cue/hot-cue/phase-sync seek intents
-15. track bytes, decoded PCM, library storage, capability tokens, physical output routing, monitor controls, cue definitions, hot-cue definitions, cue slots, and cue labels never enter shared playback messages
+15. track bytes never enter mixer/playback messages; they may cross only the explicit reusable verified content-transfer path after sender and receiver consent, while decoded PCM, library storage, capability tokens, physical output routing, monitor controls, cue definitions, hot-cue definitions, cue slots, and cue labels remain local
 16. the mixer exposes only the bounded local playback bridge needed to capture/apply media-element transport; networking code must not reach into WebAudio graphs or duplicate transport math
 17. BPM Sync remains tempo-only while Phase Sync explicitly owns the local transport seek needed for phase alignment
 18. per-deck tone controls use Rust-owned parameter plans, exact center filter state is a bypass, and both master and pre-fader cue consume the same tone-shaped signal

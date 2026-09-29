@@ -1,3 +1,4 @@
+import { installCollaborativeAssetTransfer } from "./collaborative-assets.js";
 import { installCollaborativeMixer } from "./collaborative-mixer.js";
 import { installCollaborativePlayback } from "./collaborative-playback.js";
 import { installLibraryImports } from "./library-imports.js";
@@ -22,6 +23,7 @@ void installDjPartySettings().catch((error) => {
 
 const multiplayer = installMultiplayerSessions();
 installSharedSessionTransport(multiplayer);
+installCollaborativeAssetTransfer(library);
 const mixerModule = await import("./mixer-app.js");
 installCollaborativeMixer();
 installCollaborativePlayback(mixerModule);

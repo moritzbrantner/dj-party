@@ -1,3 +1,4 @@
+import { sharedAssetTransferSession } from "./shared-assets.js";
 import { sharedPlaybackSession } from "./shared-playback.js";
 import { sharedSession } from "./shared-session.js";
 
@@ -13,6 +14,7 @@ export function installSharedSessionTransport(multiplayerUi) {
   const detach = () => {
     bridge?.close();
     bridge = null;
+    sharedAssetTransferSession.detachTransport();
     sharedPlaybackSession.detachTransport();
     sharedSession.detachTransport();
   };
@@ -28,6 +30,7 @@ export function installSharedSessionTransport(multiplayerUi) {
       bridge = new MultiplayerSharedTransport(controller);
       sharedSession.attachTransport(bridge);
       sharedPlaybackSession.attachTransport(bridge);
+      sharedAssetTransferSession.attachTransport(bridge);
       bridge.emitInitialCompatiblePeers();
     },
     { signal },
@@ -49,7 +52,7 @@ export function installSharedSessionTransport(multiplayerUi) {
   const note = typeof document === "undefined" ? null : document.querySelector(".multiplayer-note");
   if (note) {
     note.textContent =
-      "The setup service remains signaling/transport only. Verified DJ Party peers synchronize bounded mixer state and exact-track playback commands peer to peer; track bytes and hardware routing remain local.";
+      "The setup service remains signaling/control-plane only. Mixer and playback commands stay bounded; a track crosses only after explicit sender and receiver approval on the verified peer content channel. Hardware routing remains local.";
   }
 
   return {
@@ -108,6 +111,16 @@ export class MultiplayerSharedTransport extends EventTarget {
       throw new Error("Multiplayer transport session changed");
     }
     this.session.sendReliable(peerId, data);
+  }
+
+  createGameFiles(manifest) {
+    if (this.controller.session !== this.session) {
+      throw new Error("Multiplayer transport session changed");
+    }
+    if (typeof this.controller.createGameFiles !== "function") {
+      throw new Error("Verified multiplayer track transfer is unavailable");
+    }
+    return this.controller.createGameFiles(manifest);
   }
 
   broadcastApplicationReliable(data) {

@@ -34,9 +34,10 @@ The app can:
 - verify connected peers with a versioned DJ Party hello;
 - synchronize crossfader, deck levels, tempo, key lock, and per-deck EQ/filter state between verified DJ Party peers through a host-sequenced application protocol;
 - synchronize play/pause, playhead position, and 1/2/4/8-beat loop lifecycle when both peers already have the exact same locally loaded track and a compatible locally analyzed beat window, verified by the SHA-256 digest of the encoded file bytes;
-- estimate the host clock from bounded reliable-channel request/response samples so remote playheads compensate for command transit time without turning the host into an audio server.
+- estimate the host clock from bounded reliable-channel request/response samples so remote playheads compensate for command transit time without turning the host into an audio server;
+- explicitly offer one loaded host track at a time and let a guest explicitly save that track only after reusable chunk-level and full-file SHA-256 verification succeeds.
 
-Library blobs, playlists, cached analysis metadata, selected track files, decoded PCM, cue/hot-cue definitions, and physical monitor/output routing remain on the device. Multiplayer uses the configured setup service only for lobby/signaling/TURN setup; verified peers exchange bounded DJ Party mixer and playback commands directly over the service-created reliable WebRTC channel. Exact track fingerprints may cross the peer link to prove identity, but track bytes and decoded audio are not transferred.
+Library blobs, playlists, cached analysis metadata, selected track files, decoded PCM, cue/hot-cue definitions, and physical monitor/output routing remain on the device by default. Multiplayer uses the configured setup service for lobby/signaling/TURN setup; verified peers exchange bounded DJ Party mixer and playback commands directly over the service-created reliable WebRTC channel. Track bytes never enter those protocols. A host may separately opt in to one peer-to-peer track transfer, and a guest must separately accept it before the verified bytes are saved through the existing browser-local library importer.
 
 ## Architecture
 
@@ -44,7 +45,7 @@ DJ Party's Rust/WASM layer is authoritative for deterministic mixer state and pr
 
 The browser layer owns browser-only capabilities: local file/folder/ZIP/M3U selection, browser-local IndexedDB track/playlist/cache storage, object URLs, bounded ZIP extraction, audio decoding, `AudioContext`, media-element playback, Web Audio EQ/filter nodes, pitch-preservation/key-lock behavior, DOM rendering, workers, physical audio-output selection, and applying the transport/gain/tone plans returned by Rust. DJ Party does not implement biquad coefficient design in the browser adapter.
 
-The local library deliberately reuses the existing deck file-input path when a saved or playlist track is loaded. ZIP audio is handed to the same idempotent track importer rather than creating an archive-specific track store. M3U/M3U8 files contain references only: remote URLs are ignored, and unmatched local entries remain visibly unavailable instead of being fetched or guessed.
+The local library deliberately reuses the existing deck file-input path when a saved, playlist, or explicitly received peer track is loaded. ZIP and verified peer audio are handed to the same idempotent track importer rather than creating source-specific track stores. M3U/M3U8 files contain references only: remote URLs are ignored, and unmatched local entries remain visibly unavailable instead of being fetched or guessed.
 
 ZIP extraction is deliberately fail-closed: multi-disk/ZIP64/encrypted entries and unsupported compression methods are rejected, extracted audio/playlist bytes are bounded, and each materialized entry is checked against its ZIP CRC. Deflated entries require browser `DecompressionStream("deflate-raw")` support.
 
@@ -56,7 +57,7 @@ Headphone cueing is deliberately pre-fader: each deck's tone chain is applied be
 
 DJ Party consumes the reusable `LobbySession` browser client from `multiplayer-setup-service`, pinned to source commit `556f1aa2ac889acffd5b2b27163fca10f1901793`. DJ Party does not copy the service's lobby, capability-token, signaling, reconnect, ICE, TURN, or WebRTC peer-link state machines.
 
-The adapter uses `mesh` topology with optional content sharing disabled. The setup service remains a rendezvous/control-plane service: lobby creation/join, participant admission, authenticated signaling, and peer connection setup. It does not receive or own DJ Party mixer/audio state.
+The adapter uses `mesh` topology. It enables the reusable peer content channel only when the exact-pinned `GameFiles` helper is available; DJ Party itself never calls the low-level content sender. The setup service remains a rendezvous/control-plane service: lobby creation/join, participant admission, authenticated signaling, and peer connection setup. It does not receive or own DJ Party mixer/audio state or transferred track bytes.
 
 The configured signaling API and public lobby code may be stored in URL query parameters (`api` and `lobby`) so an invite can be copied. Participant capability tokens are never copied into DJ Party state or URLs. On localhost the UI defaults to `http://127.0.0.1:8787`; hosted pages require an explicitly configured HTTPS service. The service must allow the DJ Party page origin through its `ALLOWED_ORIGINS` configuration.
 
@@ -86,13 +87,19 @@ Guests estimate the host clock with three bounded request/response samples and r
 
 Tempo remains part of the mixer authority. The playback protocol carries the source playback rate only as timing metadata for playhead projection; applying a remote playback command does not replace the locally converged mixer tempo. Track selection also stays local.
 
-Beat-loop lifecycle is part of shared playback protocol v2. Loop activation carries only the bounded beat count and start/end transport window; every receiving deck must independently reproduce that window through the local Rust-owned beat-loop planner before applying it. Loop exit is represented by a null loop. A mismatched local beat grid fails closed and requires reconciliation rather than accepting remote loop arithmetic. Cue and hot-cue definitions remain local. Their one-off jumps cross the peer link only as normalized bounded seek intents carrying the exact track identity; no slot, label, or definition is shared. Beat jumps cross as bounded ±4/±8-beat intents with the initiating pre-jump playhead; the host re-plans from that bounded origin through the existing Rust-owned beat-jump policy before canonical playback is broadcast. Phase Sync may publish its resulting bounded seek while tempo remains part of mixer authority. Content bytes remain local.
+Beat-loop lifecycle is part of shared playback protocol v2. Loop activation carries only the bounded beat count and start/end transport window; every receiving deck must independently reproduce that window through the local Rust-owned beat-loop planner before applying it. Loop exit is represented by a null loop. A mismatched local beat grid fails closed and requires reconciliation rather than accepting remote loop arithmetic. Cue and hot-cue definitions remain local. Their one-off jumps cross the peer link only as normalized bounded seek intents carrying the exact track identity; no slot, label, or definition is shared. Beat jumps cross as bounded ±4/±8-beat intents with the initiating pre-jump playhead; the host re-plans from that bounded origin through the existing Rust-owned beat-jump policy before canonical playback is broadcast. Phase Sync may publish its resulting bounded seek while tempo remains part of mixer authority. Content bytes never enter shared playback.
+
+### Explicit verified track transfer
+
+Track transfer is a separate opt-in path rather than a side effect of playback synchronization. The lobby host must choose **Share Deck A** or **Share Deck B**, which prepares a one-file trusted manifest from the exact encoded bytes. Only one track is offered at a time. A guest receives only metadata until choosing **Save shared track**.
+
+The transfer uses the pinned `multiplayer-setup-service` `GameFiles` and content-transfer helpers. The dedicated ordered peer channel applies backpressure, verifies every 60 KiB chunk against the advertised manifest, and verifies the reconstructed full-file SHA-256 before DJ Party can create a local `File`. DJ Party then hashes the received bytes against the same playback identity once more and hands the result to the existing local-library importer. The host provider refuses requests from peers that have not completed the DJ Party compatibility handshake. Received tracks are not auto-loaded into a deck, so track selection remains local and existing playback reconciliation still requires the exact local track identity.
 
 Reusable ownership remains explicit:
 
 - BPM, beat-grid, downbeat, related rhythm analysis, reusable policy-neutral playback/DJ calculations, and generic DSP/filter math come from shared audio/math layers rather than being reimplemented here;
-- collaborative lobby/signaling and WebRTC connection setup come from `multiplayer-setup-service`;
-- host sequencing, replay protection, mixer convergence, exact-track playback convergence, and clock alignment are DJ Party application semantics;
+- collaborative lobby/signaling, WebRTC connection setup, bounded content-channel backpressure, and content verification come from `multiplayer-setup-service`;
+- host sequencing, replay protection, mixer convergence, exact-track playback convergence, clock alignment, and the explicit offer/accept policy are DJ Party application semantics;
 - browser media elements and Web Audio remain local playback/rendering mechanisms.
 
 ## Build and validate
@@ -103,7 +110,7 @@ Requirements: Rust 1.95.0, the `wasm32-unknown-unknown` target, and `wasm-pack` 
 cargo fmt --all --check
 cargo clippy --all-targets --all-features -- -D warnings
 cargo test --all-features
-node --test web/library.test.mjs web/archive-import.test.mjs web/analysis-cache.test.mjs web/multiplayer.test.mjs web/shared-session.test.mjs web/shared-session-transport.test.mjs web/collaborative-mixer.test.mjs web/track-identity.test.mjs web/shared-playback.test.mjs web/collaborative-playback.test.mjs
+node --test web/library.test.mjs web/archive-import.test.mjs web/analysis-cache.test.mjs web/multiplayer.test.mjs web/shared-session.test.mjs web/shared-session-transport.test.mjs web/shared-assets.test.mjs web/collaborative-mixer.test.mjs web/track-identity.test.mjs web/shared-playback.test.mjs web/collaborative-playback.test.mjs
 cargo install wasm-pack --version 0.13.1 --locked
 bash scripts/build-pages.sh
 ```
@@ -127,4 +134,5 @@ The generated static site is written to `_site/` and can be served by any local 
    - exact-track identity + clock-aligned play/pause/seek reconciliation — implemented
    - shared loop lifecycle — implemented
    - richer performance-transport semantics — implemented
-   - optional verified asset transfer and broader collaborative mixing — next
+   - optional verified one-track asset transfer with explicit sender/receiver consent — implemented
+   - broader collaborative mixing — next
