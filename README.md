@@ -104,7 +104,7 @@ Reusable ownership remains explicit:
 
 ## Build and validate
 
-Requirements: Rust 1.95.0, the `wasm32-unknown-unknown` target, and `wasm-pack` 0.13.1.
+Requirements: stable Rust, the `wasm32-unknown-unknown` target, and `wasm-pack` 0.13.1.
 
 ```sh
 cargo fmt --all --check
