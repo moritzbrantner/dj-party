@@ -117,6 +117,23 @@ bash scripts/build-pages.sh
 
 The generated static site is written to `_site/` and can be served by any local static HTTP server.
 
+## Reporting wrong analysis upstream
+
+When a track gets a wrong BPM, beat grid or downbeat (BPM Sync, Phase Sync, loops, beat jumps, bar/beat display), don't work around it here. Capture the case and add it to `audio-analysis`:
+
+```sh
+cargo run --example capture_analysis_case -- track.mp3 --id dj-party-<short-name> \
+  --scenario bpm-sync --expected-bpm 124 [--expected-downbeat 0.42] \
+  [--start 30 --duration 20] [--note "what the deck did"]
+```
+
+The tool decodes the file with `ffmpeg` to the browser's mono mixdown at 48 kHz and runs the exact deck worker path (`analyze_track_rhythm`). It then prints a JSON case with expected vs observed values and the DJ Party and audio-analysis revisions. Append the case to `audio-analysis/crates/audio/audio-analysis-rhythm/tests/fixtures/consumer-failures.v1.json` with `status: "open"` and file an audio-analysis issue. That fixture test fails once the case starts passing, until its status is flipped to `fixed`.
+
+- Free-licensed audio (CC0, CC-BY, CC-BY-SA, CC-PDM): add `--license CC-BY-3.0 --source-url … --excerpt-out <name>.wav` and commit the excerpt under `tests/fixtures/consumer-audio/` upstream. NC/ND audio is refused.
+- Anything else stays local: the case records only features, expected vs observed values and provenance (`audio.kind = "private"`).
+
+After the upstream fix, repin `audio-analysis` here. The product test `analyzed_click_track_drives_quantized_loops` is linked to the upstream semantic case `dj-party-analyzed-quantized-loops`. The first captured failure is `dj-party-sorohanro-trumpet-90-bpm` ([audio-analysis#212](https://github.com/moritzbrantner/audio-analysis/issues/212)).
+
 ## Roadmap
 
 1. Browser MVP on GitHub Pages — done

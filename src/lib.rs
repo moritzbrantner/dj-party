@@ -260,19 +260,23 @@ pub fn plan_beat_loop(
 
 #[wasm_bindgen]
 pub fn analyze_rhythm(samples: &[f32], sample_rate: u32) -> Result<RhythmAnalysis, JsValue> {
+    analyze_track_rhythm(samples, sample_rate).map_err(|error| JsValue::from_str(&error))
+}
+
+/// The exact rhythm-analysis path the deck worker uses, callable natively so
+/// `examples/capture_analysis_case.rs` can reproduce a deck's result.
+pub fn analyze_track_rhythm(samples: &[f32], sample_rate: u32) -> Result<RhythmAnalysis, String> {
     if sample_rate == 0 {
-        return Err(JsValue::from_str("sample rate must be greater than zero"));
+        return Err("sample rate must be greater than zero".to_owned());
     }
 
     let max_samples = (sample_rate as usize).saturating_mul(MAX_ANALYSIS_SECONDS);
     if samples.len() > max_samples {
-        return Err(JsValue::from_str(
-            "track analysis is bounded to fifteen minutes per deck",
-        ));
+        return Err("track analysis is bounded to fifteen minutes per deck".to_owned());
     }
 
     let analysis = analyze_rhythm_track(samples, sample_rate, TrackRhythmConfig::default())
-        .map_err(|error| JsValue::from_str(&error.to_string()))?;
+        .map_err(|error| error.to_string())?;
 
     Ok(RhythmAnalysis {
         bpm: analysis.bpm,
@@ -444,5 +448,34 @@ mod tests {
         let analysis = analyze_rhythm(&samples, 8_000).expect("analyze silence");
         assert!(!analysis.has_bpm());
         assert!(analysis.beats().is_empty());
+    }
+
+    // Product acceptance for the upstream audio-analysis semantic case
+    // `dj-party-analyzed-quantized-loops` (audio-analysis-rhythm
+    // tests/fixtures/consumer-scenarios.v1.json). Reusable analysis failures go
+    // upstream via `examples/capture_analysis_case.rs`.
+    #[test]
+    fn analyzed_click_track_drives_quantized_loops() {
+        let sample_rate = 8_000;
+        let mut samples = vec![0.0; sample_rate as usize * 25];
+        for beat in 0..48 {
+            let start = (0.5 + beat as f64 * 0.5) * sample_rate as f64;
+            for offset in 0..80 {
+                samples[start as usize + offset] = 1.0 - offset as f32 / 80.0;
+            }
+        }
+        let analysis = analyze_track_rhythm(&samples, sample_rate).expect("analyze clicks");
+        assert!(
+            (analysis.bpm() - 120.0).abs() < 4.0,
+            "bpm={}",
+            analysis.bpm()
+        );
+        let beats = analysis.beats();
+        for count in LOOP_BEAT_COUNTS {
+            let beat_loop = plan_beat_loop(&beats, 1.82, count, 25.0);
+            assert!(beat_loop.valid(), "{count}-beat loop");
+            assert!((beat_loop.start_seconds() - 2.0).abs() < 0.07);
+            assert!((beat_loop.end_seconds() - (2.0 + count as f64 * 0.5)).abs() < 0.07);
+        }
     }
 }
