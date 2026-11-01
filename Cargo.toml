@@ -16,9 +16,9 @@ audio-analysis-processing = { package = "moenarch-audio-analysis-processing", gi
 audio-analysis-rhythm = { package = "moenarch-audio-analysis-rhythm", git = "https://github.com/moritzbrantner/audio-analysis.git", rev = "7bd22d0d0efde1f8b836f4941de60f53862fe7f5" }
 
 [dev-dependencies]
-hound = "3.5"
-serde_json = "1"
-sha2 = "0.11"
+hound = "=3.5.1"
+serde_json = "=1.0.154"
+sha2 = "=0.11.1"
 
 [package.metadata.wasm-pack.profile.release]
 wasm-opt = false
