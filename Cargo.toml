@@ -18,7 +18,7 @@ audio-analysis-rhythm = { package = "moenarch-audio-analysis-rhythm", git = "htt
 [dev-dependencies]
 hound = "=3.5.1"
 serde_json = "=1.0.154"
-sha2 = "=0.11.1"
+sha2 = "=0.11.2"
 
 [package.metadata.wasm-pack.profile.release]
 wasm-opt = false
